@@ -4,7 +4,7 @@ struct WorkspaceSummaryView: View {
     let state: WorkspaceStore.State
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DevSpaceSpacing.medium) {
             statusHeader
 
             if let snapshot {
@@ -30,11 +30,11 @@ struct WorkspaceSummaryView: View {
     private var statusHeader: some View {
         let presentation = WorkspaceStatusPresentation(state: state)
 
-        return HStack(spacing: 8) {
-            Image(systemName: presentation.systemImage)
-                .foregroundStyle(presentation.color)
-            Text(presentation.title)
-                .font(.headline)
+        return HStack(spacing: DevSpaceSpacing.small) {
+            DevSpaceStatusBadge(
+                status: presentation.semanticStatus,
+                title: presentation.title
+            )
 
             Spacer()
 
@@ -48,12 +48,12 @@ struct WorkspaceSummaryView: View {
     @ViewBuilder
     private func gitSection(_ git: GitSummary?) -> some View {
         if let git {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: DevSpaceSpacing.xSmall) {
                 Text("Git")
-                    .font(.caption)
+                    .font(DevSpaceTypography.sectionLabel)
                     .foregroundStyle(.secondary)
                 Text("\(git.branch) · ↑\(git.commitsAhead) ↓\(git.commitsBehind) · \(git.changedFileCount) files changed")
-                    .font(.callout.monospacedDigit())
+                    .font(DevSpaceTypography.body.monospacedDigit())
             }
         }
     }
@@ -61,15 +61,17 @@ struct WorkspaceSummaryView: View {
     @ViewBuilder
     private func servicesSection(_ services: [ServiceSummary]) -> some View {
         if !services.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: DevSpaceSpacing.small) {
                 Text("Services")
-                    .font(.caption)
+                    .font(DevSpaceTypography.sectionLabel)
                     .foregroundStyle(.secondary)
 
                 ForEach(services) { service in
+                    let token = service.health.semanticStatus.token
+
                     HStack {
-                        Image(systemName: service.health.systemImage)
-                            .foregroundStyle(service.health.color)
+                        Image(systemName: token.systemImage)
+                            .foregroundStyle(token.color)
                         Text(service.name)
                         Spacer()
                         if let port = service.port {
@@ -78,7 +80,7 @@ struct WorkspaceSummaryView: View {
                                 .monospacedDigit()
                         }
                     }
-                    .font(.callout)
+                    .font(DevSpaceTypography.body)
                 }
             }
         }
@@ -106,31 +108,18 @@ struct WorkspaceSummaryView: View {
 }
 
 private extension ServiceHealth {
-    var systemImage: String {
+    var semanticStatus: DevSpaceSemanticStatus {
         switch self {
         case .stopped:
-            "circle"
+            .inactive
         case .starting:
-            "arrow.up.circle"
+            .inProgress
         case .healthy:
-            "checkmark.circle.fill"
+            .ready
         case .unhealthy:
-            "xmark.circle.fill"
+            .failed
         case .unknown:
-            "questionmark.circle"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .stopped, .unknown:
-            .secondary
-        case .starting:
-            .blue
-        case .healthy:
-            .green
-        case .unhealthy:
-            .red
+            .offline
         }
     }
 }

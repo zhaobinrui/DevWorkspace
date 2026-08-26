@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class WorkspaceStoreTests: XCTestCase {
-    func refresh_whenProviderSucceeds_shouldPublishCurrentSnapshot() async {
+    func test_refresh_whenProviderSucceeds_shouldPublishCurrentSnapshot() async {
         let snapshot = makeSnapshot()
         let store = makeStore(provider: ScriptedSnapshotProvider([.snapshot(snapshot)]))
 
@@ -12,7 +12,7 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(store.state, .ready(snapshot))
     }
 
-    func refresh_whenInitialLoadFails_shouldPublishFailure() async {
+    func test_refresh_whenInitialLoadFails_shouldPublishFailure() async {
         let store = makeStore(provider: ScriptedSnapshotProvider([.failure("offline")]))
 
         await store.refresh()
@@ -20,7 +20,7 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(store.state, .failed(message: "offline"))
     }
 
-    func refresh_whenRefreshFails_shouldPreserveLastTrustedSnapshotAsStale() async {
+    func test_refresh_whenRefreshFails_shouldPreserveLastTrustedSnapshotAsStale() async {
         let snapshot = makeSnapshot()
         let provider = ScriptedSnapshotProvider([.snapshot(snapshot), .failure("offline")])
         let store = makeStore(provider: provider)
@@ -34,7 +34,7 @@ final class WorkspaceStoreTests: XCTestCase {
         )
     }
 
-    func refresh_whenCancelled_shouldRestorePreviousState() async {
+    func test_refresh_whenCancelled_shouldRestorePreviousState() async {
         let snapshot = makeSnapshot()
         let provider = ScriptedSnapshotProvider([.snapshot(snapshot), .cancellation])
         let store = makeStore(provider: provider)
@@ -45,7 +45,7 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(store.state, .ready(snapshot))
     }
 
-    func refresh_whenRetriedAfterFailure_shouldRecover() async {
+    func test_refresh_whenRetriedAfterFailure_shouldRecover() async {
         let snapshot = makeSnapshot()
         let provider = ScriptedSnapshotProvider([.failure("offline"), .snapshot(snapshot)])
         let store = makeStore(provider: provider)
@@ -56,7 +56,7 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(store.state, .ready(snapshot))
     }
 
-    func init_whenSnapshotIsRestored_shouldMarkItStale() {
+    func test_init_whenSnapshotIsRestored_shouldMarkItStale() {
         let snapshot = makeSnapshot()
 
         let store = makeStore(
@@ -85,10 +85,14 @@ final class WorkspaceStoreTests: XCTestCase {
     }
 
     private func makeProject() -> ProjectReference {
-        ProjectReference(
-            id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
-            name: "Example",
-            rootDirectory: URL(fileURLWithPath: "/private/tmp/example")
+        let identity = try! LocalProjectIdentityResolver().resolve(
+            rootDirectory: URL(fileURLWithPath: "/private/tmp/example", isDirectory: true),
+            declaredMetadataID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")
+        )
+
+        return ProjectReference(
+            identity: identity,
+            name: "Example"
         )
     }
 

@@ -4,9 +4,9 @@ struct WorkspaceDashboardView: View {
     @Bindable var store: WorkspaceStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: DevSpaceSpacing.xLarge) {
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: DevSpaceSpacing.xSmall) {
                     Text(store.project.name)
                         .font(.largeTitle.bold())
                     Text(store.project.rootDirectory.path())
@@ -30,8 +30,11 @@ struct WorkspaceDashboardView: View {
 
             Spacer()
         }
-        .padding(24)
-        .frame(minWidth: 720, minHeight: 480)
+        .padding(DevSpaceSpacing.xLarge)
+        .frame(
+            minWidth: DevSpaceLayout.dashboardMinimumWidth,
+            minHeight: DevSpaceLayout.dashboardMinimumHeight
+        )
         .task {
             if store.shouldLoad {
                 await store.refresh()

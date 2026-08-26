@@ -1,18 +1,23 @@
 import Foundation
 
 struct ProjectReference: Codable, Hashable, Identifiable, Sendable {
-    let id: UUID
+    let identity: ProjectIdentity
     let name: String
-    let rootDirectory: URL
 
     init(
-        id: UUID = UUID(),
+        identity: ProjectIdentity,
         name: String,
-        rootDirectory: URL
     ) {
-        self.id = id
+        self.identity = identity
         self.name = name
-        self.rootDirectory = rootDirectory
+    }
+
+    var id: ProjectIdentifier {
+        identity.identifier
+    }
+
+    var rootDirectory: URL {
+        identity.canonicalRootDirectory
     }
 }
 

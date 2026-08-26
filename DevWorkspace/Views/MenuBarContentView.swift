@@ -5,8 +5,8 @@ struct MenuBarContentView: View {
     @Bindable var store: WorkspaceStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: DevSpaceSpacing.medium) {
+            VStack(alignment: .leading, spacing: DevSpaceSpacing.xSmall) {
                 Text(store.project.name)
                     .font(.headline)
                 Text(store.project.rootDirectory.path())
@@ -36,8 +36,8 @@ struct MenuBarContentView: View {
                 }
             }
         }
-        .padding(14)
-        .frame(width: 360)
+        .padding(DevSpaceSpacing.large)
+        .frame(width: DevSpaceLayout.menuBarWidth)
         .task {
             if store.shouldLoad {
                 await store.refresh()
