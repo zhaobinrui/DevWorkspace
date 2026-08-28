@@ -56,18 +56,21 @@ enum DevSpaceProduct: String, CaseIterable, Codable, Sendable {
         switch self {
         case .meter:
             DevSpaceIconContract(
-                foregroundRole: "gauge and activity pulse",
-                menuBarSymbolName: "gauge.with.dots.needle.50percent"
+                foregroundRole: "orbital hub with usage gauge",
+                menuBarAssetName: "DevMeterMenuIcon",
+                fallbackSystemSymbolName: "gauge.with.dots.needle.50percent"
             )
         case .workspace:
             DevSpaceIconContract(
-                foregroundRole: "workspace grid and active node",
-                menuBarSymbolName: "rectangle.3.group"
+                foregroundRole: "orbital hub with workspace grid",
+                menuBarAssetName: "DevWorkspaceMenuIcon",
+                fallbackSystemSymbolName: "rectangle.3.group"
             )
         case .memory:
             DevSpaceIconContract(
-                foregroundRole: "memory card and capture mark",
-                menuBarSymbolName: "text.badge.plus"
+                foregroundRole: "orbital hub with memory capture tile",
+                menuBarAssetName: "DevMemoryMenuIcon",
+                fallbackSystemSymbolName: "text.badge.plus"
             )
         }
     }
@@ -75,5 +78,6 @@ enum DevSpaceProduct: String, CaseIterable, Codable, Sendable {
 
 struct DevSpaceIconContract: Equatable, Sendable {
     let foregroundRole: String
-    let menuBarSymbolName: String
+    let menuBarAssetName: String
+    let fallbackSystemSymbolName: String
 }

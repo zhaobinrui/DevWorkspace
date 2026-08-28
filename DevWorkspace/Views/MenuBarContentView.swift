@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct MenuBarContentView: View {
-    @Environment(\.openWindow) private var openWindow
     @Bindable var store: WorkspaceStore
+    let openWorkspace: @MainActor () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: DevSpaceSpacing.medium) {
@@ -31,9 +31,7 @@ struct MenuBarContentView: View {
 
                 Spacer()
 
-                Button("打开工作区") {
-                    openWindow(id: "workspace")
-                }
+                Button("打开工作区", action: openWorkspace)
             }
         }
         .padding(DevSpaceSpacing.large)

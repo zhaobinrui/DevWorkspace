@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 @testable import DevWorkspace
@@ -11,8 +12,13 @@ final class SharedFoundationTests: XCTestCase {
         XCTAssertEqual(Set(products.map(\.displayName)).count, products.count)
         XCTAssertEqual(Set(products.map(\.bundleIdentifier)).count, products.count)
         XCTAssertEqual(Set(products.map(\.urlScheme)).count, products.count)
+        XCTAssertEqual(
+            Set(products.map(\.icon.menuBarAssetName)).count,
+            products.count
+        )
         XCTAssertTrue(products.allSatisfy { $0.bundleIdentifier.hasPrefix("com.zhaobinrui.devspace.") })
-        XCTAssertTrue(products.allSatisfy { !$0.icon.menuBarSymbolName.isEmpty })
+        XCTAssertTrue(products.allSatisfy { !$0.icon.menuBarAssetName.isEmpty })
+        XCTAssertTrue(products.allSatisfy { !$0.icon.fallbackSystemSymbolName.isEmpty })
     }
 
     func test_resolve_whenCanonicalRootSpellingChanges_shouldKeepIdentifierStable() throws {
@@ -79,5 +85,59 @@ final class SharedFoundationTests: XCTestCase {
             XCTAssertFalse(status.token.canonicalLabel.isEmpty)
             XCTAssertFalse(status.token.systemImage.isEmpty)
         }
+    }
+
+    func test_menuBarClickAction_whenRightMouseIsReleased_shouldShowContextMenu() {
+        XCTAssertEqual(
+            MenuBarClickAction(eventType: .rightMouseUp),
+            .showContextMenu
+        )
+    }
+
+    func test_menuBarClickAction_whenPrimaryMouseIsReleased_shouldTogglePopover() {
+        XCTAssertEqual(
+            MenuBarClickAction(eventType: .leftMouseUp),
+            .togglePopover
+        )
+    }
+
+    @MainActor
+    func test_contextMenu_whenBuilt_shouldExposeQuitActionAndKeyboardShortcut() throws {
+        let identity = try resolver.resolve(
+            rootDirectory: URL(
+                fileURLWithPath: "/private/tmp/menu-bar-test",
+                isDirectory: true
+            ),
+            declaredMetadataID: UUID(
+                uuidString: "00000000-0000-0000-0000-000000000043"
+            )
+        )
+        let controller = MenuBarController(
+            store: WorkspaceStore(
+                project: ProjectReference(identity: identity, name: "Example"),
+                provider: PreviewWorkspaceSnapshotProvider()
+            )
+        )
+
+        let menu = controller.makeContextMenu()
+
+        XCTAssertEqual(
+            menu.items.map(\.title),
+            ["打开工作区", "设置…", "", "退出 DevWorkspace"]
+        )
+        XCTAssertEqual(menu.items.last?.keyEquivalent, "q")
+        XCTAssertNotNil(menu.items.last?.action)
+    }
+
+    @MainActor
+    func test_workspaceMenuIcon_whenLoaded_shouldBeATemplateImage() {
+        let icon = NSImage(
+            named: NSImage.Name(
+                DevSpaceProduct.workspace.icon.menuBarAssetName
+            )
+        )
+
+        XCTAssertNotNil(icon)
+        XCTAssertEqual(icon?.isTemplate, true)
     }
 }
