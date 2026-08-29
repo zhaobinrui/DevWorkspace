@@ -20,6 +20,21 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(store.state, .failed(message: .provider("offline")))
     }
 
+    func test_refresh_whenProviderReturnsStaleSnapshot_shouldPublishDegradedState() async {
+        let snapshot = makeSnapshot(freshness: .stale)
+        let store = makeStore(provider: ScriptedSnapshotProvider([.snapshot(snapshot)]))
+
+        await store.refresh()
+
+        XCTAssertEqual(
+            store.state,
+            .degraded(
+                snapshot: snapshot,
+                message: .sourceReportedStale
+            )
+        )
+    }
+
     func test_refresh_whenRefreshFails_shouldPreserveLastTrustedSnapshotAsStale() async {
         let snapshot = makeSnapshot()
         let provider = ScriptedSnapshotProvider([.snapshot(snapshot), .failure("offline")])
@@ -59,6 +74,27 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(store.state, .ready(snapshot))
     }
 
+    func test_refresh_whenRetriedAfterDegradation_shouldReplaceStaleSnapshot() async {
+        let firstSnapshot = makeSnapshot(
+            observedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let recoveredSnapshot = makeSnapshot(
+            observedAt: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+        let provider = ScriptedSnapshotProvider([
+            .snapshot(firstSnapshot),
+            .failure("offline"),
+            .snapshot(recoveredSnapshot),
+        ])
+        let store = makeStore(provider: provider)
+        await store.refresh()
+        await store.refresh()
+
+        await store.refresh()
+
+        XCTAssertEqual(store.state, .ready(recoveredSnapshot))
+    }
+
     func test_init_whenSnapshotIsRestored_shouldMarkItStale() {
         let snapshot = makeSnapshot()
 
@@ -72,6 +108,24 @@ final class WorkspaceStoreTests: XCTestCase {
             .degraded(
                 snapshot: snapshot.markedStale(),
                 message: .restoredSnapshot
+            )
+        )
+    }
+
+    func test_refresh_whenRestoredSnapshotRefreshIsCancelled_shouldRemainDegraded() async {
+        let snapshot = makeSnapshot()
+        let store = makeStore(
+            provider: ScriptedSnapshotProvider([.cancellation]),
+            restoredSnapshot: snapshot
+        )
+
+        await store.refresh()
+
+        XCTAssertEqual(
+            store.state,
+            .degraded(
+                snapshot: snapshot.markedStale(),
+                message: .refreshCancelled
             )
         )
     }
@@ -99,14 +153,17 @@ final class WorkspaceStoreTests: XCTestCase {
         )
     }
 
-    private func makeSnapshot() -> WorkspaceSnapshot {
+    private func makeSnapshot(
+        observedAt: Date = Date(timeIntervalSince1970: 1_700_000_000),
+        freshness: SnapshotFreshness = .current
+    ) -> WorkspaceSnapshot {
         WorkspaceSnapshot(
             project: makeProject(),
             lifecycle: .ready,
             git: nil,
             services: [],
-            observedAt: Date(timeIntervalSince1970: 1_700_000_000),
-            freshness: .current,
+            observedAt: observedAt,
+            freshness: freshness,
             origin: .local
         )
     }

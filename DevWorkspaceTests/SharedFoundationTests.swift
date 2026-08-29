@@ -87,6 +87,88 @@ final class SharedFoundationTests: XCTestCase {
         }
     }
 
+    func test_workspaceStatusPresentation_whenStateChanges_shouldUseCanonicalSemantics() throws {
+        let identity = try resolver.resolve(
+            rootDirectory: URL(
+                fileURLWithPath: "/private/tmp/status-presentation-test",
+                isDirectory: true
+            ),
+            declaredMetadataID: UUID(
+                uuidString: "00000000-0000-0000-0000-000000000044"
+            )
+        )
+        let project = ProjectReference(identity: identity, name: "Example")
+        let lifecycleCases: [(WorkspaceLifecycle, DevSpaceSemanticStatus)] = [
+            (.stopped, .inactive),
+            (.starting, .inProgress),
+            (.ready, .ready),
+            (.degraded, .needsAttention),
+            (.failed, .failed),
+        ]
+
+        XCTAssertEqual(
+            WorkspaceStatusPresentation(
+                state: .idle,
+                language: .english
+            ).semanticStatus,
+            .offline
+        )
+        XCTAssertEqual(
+            WorkspaceStatusPresentation(
+                state: .refreshing(previous: nil),
+                language: .english
+            ).semanticStatus,
+            .inProgress
+        )
+        XCTAssertEqual(
+            WorkspaceStatusPresentation(
+                state: .failed(message: .provider("offline")),
+                language: .english
+            ).semanticStatus,
+            .failed
+        )
+
+        for (lifecycle, expectedStatus) in lifecycleCases {
+            let snapshot = WorkspaceSnapshot(
+                project: project,
+                lifecycle: lifecycle,
+                git: nil,
+                services: [],
+                observedAt: Date(timeIntervalSince1970: 1_700_000_000),
+                freshness: .current,
+                origin: .local
+            )
+            let presentation = WorkspaceStatusPresentation(
+                state: .ready(snapshot),
+                language: .english
+            )
+
+            XCTAssertEqual(presentation.semanticStatus, expectedStatus)
+            XCTAssertFalse(presentation.title.isEmpty)
+        }
+    }
+
+    func test_serviceHealthPresentation_whenHealthChanges_shouldExposeTextAndSemanticCue() {
+        let cases: [(ServiceHealth, String, DevSpaceSemanticStatus)] = [
+            (.stopped, "Stopped", .inactive),
+            (.starting, "Starting", .inProgress),
+            (.healthy, "Healthy", .ready),
+            (.unhealthy, "Unhealthy", .failed),
+            (.unknown, "Unknown", .offline),
+        ]
+
+        for (health, expectedTitle, expectedStatus) in cases {
+            let presentation = ServiceHealthPresentation(
+                health: health,
+                language: .english
+            )
+
+            XCTAssertEqual(presentation.title, expectedTitle)
+            XCTAssertEqual(presentation.semanticStatus, expectedStatus)
+            XCTAssertFalse(presentation.systemImage.isEmpty)
+        }
+    }
+
     func test_appLanguage_whenPreferredLanguageIsChinese_shouldSelectSimplifiedChinese() {
         XCTAssertEqual(
             AppLanguage.preferred(from: ["zh-Hans-CN", "en-US"]),

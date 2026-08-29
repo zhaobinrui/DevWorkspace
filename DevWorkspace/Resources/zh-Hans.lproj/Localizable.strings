@@ -50,6 +50,14 @@
 "workspace.preview-data" = "框架预览数据";
 "workspace.section.services" = "服务";
 "workspace.git.summary-format" = "%@ · ↑%lld ↓%lld · %lld 个文件已更改";
+"workspace.snapshot.updated-at" = "更新时间";
+"workspace.snapshot.last-trusted-at" = "最后可信时间";
+
+"service.status.stopped" = "已停止";
+"service.status.starting" = "正在启动";
+"service.status.healthy" = "健康";
+"service.status.unhealthy" = "异常";
+"service.status.unknown" = "未知";
 
 "workspace.status.idle" = "尚未加载";
 "workspace.status.refreshing" = "正在刷新";
@@ -63,6 +71,7 @@
 
 "workspace.message.restored-snapshot" = "显示上次可信状态，等待刷新。";
 "workspace.message.refresh-cancelled" = "刷新已取消，显示上次可信状态。";
+"workspace.message.source-reported-stale" = "数据源返回了较早的快照，已按过期状态展示。";
 
 "menu.open-workspace" = "打开工作区";
 "menu.settings" = "设置…";

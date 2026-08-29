@@ -50,6 +50,14 @@
 "workspace.preview-data" = "Framework preview data";
 "workspace.section.services" = "Services";
 "workspace.git.summary-format" = "%@ · ↑%lld ↓%lld · %lld files changed";
+"workspace.snapshot.updated-at" = "Updated";
+"workspace.snapshot.last-trusted-at" = "Last trusted";
+
+"service.status.stopped" = "Stopped";
+"service.status.starting" = "Starting";
+"service.status.healthy" = "Healthy";
+"service.status.unhealthy" = "Unhealthy";
+"service.status.unknown" = "Unknown";
 
 "workspace.status.idle" = "Not Loaded";
 "workspace.status.refreshing" = "Refreshing";
@@ -63,6 +71,7 @@
 
 "workspace.message.restored-snapshot" = "Showing the last trusted status while waiting to refresh.";
 "workspace.message.refresh-cancelled" = "Refresh was cancelled; showing the last trusted status.";
+"workspace.message.source-reported-stale" = "The data source returned an older snapshot; it is shown as stale.";
 
 "menu.open-workspace" = "Open Workspace";
 "menu.settings" = "Settings…";

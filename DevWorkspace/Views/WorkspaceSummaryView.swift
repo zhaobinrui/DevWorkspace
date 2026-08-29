@@ -10,6 +10,8 @@ struct WorkspaceSummaryView: View {
             statusHeader
 
             if let snapshot {
+                snapshotMetadata(snapshot)
+
                 if snapshot.origin == .preview {
                     Label("workspace.preview-data", systemImage: "hammer")
                         .font(.caption)
@@ -27,6 +29,25 @@ struct WorkspaceSummaryView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    private func snapshotMetadata(_ snapshot: WorkspaceSnapshot) -> some View {
+        Label {
+            HStack(spacing: DevSpaceSpacing.xSmall) {
+                Text(snapshot.freshness.metadataLocalizationKey)
+                Text(
+                    snapshot.observedAt,
+                    format: .dateTime.year().month().day().hour().minute()
+                )
+            }
+        } icon: {
+            Image(systemName: snapshot.freshness.metadataSystemImage)
+        }
+        .font(DevSpaceTypography.metadata)
+        .foregroundStyle(
+            snapshot.freshness == .stale ? Color.orange : Color.secondary
+        )
+        .accessibilityElement(children: .combine)
     }
 
     private var statusHeader: some View {
@@ -72,13 +93,18 @@ struct WorkspaceSummaryView: View {
                     .foregroundStyle(.secondary)
 
                 ForEach(services) { service in
-                    let token = service.health.semanticStatus.token
+                    let presentation = ServiceHealthPresentation(
+                        health: service.health,
+                        language: appLanguage
+                    )
 
                     HStack {
-                        Image(systemName: token.systemImage)
-                            .foregroundStyle(token.color)
+                        Image(systemName: presentation.systemImage)
+                            .foregroundStyle(presentation.color)
                         Text(service.name)
                         Spacer()
+                        Text(presentation.title)
+                            .foregroundStyle(presentation.color)
                         if let port = service.port {
                             Text(String(port))
                                 .foregroundStyle(.secondary)
@@ -86,6 +112,7 @@ struct WorkspaceSummaryView: View {
                         }
                     }
                     .font(DevSpaceTypography.body)
+                    .accessibilityElement(children: .combine)
                 }
             }
         }
@@ -124,19 +151,22 @@ struct WorkspaceSummaryView: View {
     }
 }
 
-private extension ServiceHealth {
-    var semanticStatus: DevSpaceSemanticStatus {
+private extension SnapshotFreshness {
+    var metadataLocalizationKey: LocalizedStringKey {
         switch self {
-        case .stopped:
-            .inactive
-        case .starting:
-            .inProgress
-        case .healthy:
-            .ready
-        case .unhealthy:
-            .failed
-        case .unknown:
-            .offline
+        case .current:
+            "workspace.snapshot.updated-at"
+        case .stale:
+            "workspace.snapshot.last-trusted-at"
+        }
+    }
+
+    var metadataSystemImage: String {
+        switch self {
+        case .current:
+            "clock"
+        case .stale:
+            "clock.badge.exclamationmark"
         }
     }
 }

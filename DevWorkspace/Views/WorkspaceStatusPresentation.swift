@@ -74,3 +74,51 @@ struct WorkspaceStatusPresentation {
         self.semanticStatus = semanticStatus
     }
 }
+
+struct ServiceHealthPresentation {
+    let title: String
+    let semanticStatus: DevSpaceSemanticStatus
+
+    var systemImage: String {
+        semanticStatus.token.systemImage
+    }
+
+    var color: Color {
+        semanticStatus.token.color
+    }
+
+    init(health: ServiceHealth, language: AppLanguage) {
+        switch health {
+        case .stopped:
+            self.init(
+                title: language.localized("service.status.stopped"),
+                semanticStatus: .inactive
+            )
+        case .starting:
+            self.init(
+                title: language.localized("service.status.starting"),
+                semanticStatus: .inProgress
+            )
+        case .healthy:
+            self.init(
+                title: language.localized("service.status.healthy"),
+                semanticStatus: .ready
+            )
+        case .unhealthy:
+            self.init(
+                title: language.localized("service.status.unhealthy"),
+                semanticStatus: .failed
+            )
+        case .unknown:
+            self.init(
+                title: language.localized("service.status.unknown"),
+                semanticStatus: .offline
+            )
+        }
+    }
+
+    private init(title: String, semanticStatus: DevSpaceSemanticStatus) {
+        self.title = title
+        self.semanticStatus = semanticStatus
+    }
+}

@@ -4,6 +4,7 @@ import Observation
 enum WorkspaceStateMessage: Equatable, Sendable {
     case restoredSnapshot
     case refreshCancelled
+    case sourceReportedStale
     case provider(String)
 
     func localized(in language: AppLanguage) -> String {
@@ -12,6 +13,8 @@ enum WorkspaceStateMessage: Equatable, Sendable {
             language.localized("workspace.message.restored-snapshot")
         case .refreshCancelled:
             language.localized("workspace.message.refresh-cancelled")
+        case .sourceReportedStale:
+            language.localized("workspace.message.source-reported-stale")
         case let .provider(message):
             message
         }
@@ -92,7 +95,14 @@ final class WorkspaceStore {
         do {
             let snapshot = try await provider.snapshot(for: project)
             try Task.checkCancellation()
-            state = .ready(snapshot)
+            // 数据源可以返回历史缓存；即使调用成功，也不能把明确标记为 stale 的快照
+            // 提升为 Ready，否则会破坏“旧数据不得伪装为实时状态”的可信边界。
+            state = snapshot.freshness == .current
+                ? .ready(snapshot)
+                : .degraded(
+                    snapshot: snapshot,
+                    message: .sourceReportedStale
+                )
         } catch is CancellationError {
             // 取消是调用方主动结束工作，不等同于数据源故障，因此恢复原可信状态且不制造错误。
             if let previous {
