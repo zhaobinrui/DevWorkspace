@@ -1,6 +1,23 @@
 import Foundation
 import Observation
 
+enum WorkspaceStateMessage: Equatable, Sendable {
+    case restoredSnapshot
+    case refreshCancelled
+    case provider(String)
+
+    func localized(in language: AppLanguage) -> String {
+        switch self {
+        case .restoredSnapshot:
+            language.localized("workspace.message.restored-snapshot")
+        case .refreshCancelled:
+            language.localized("workspace.message.refresh-cancelled")
+        case let .provider(message):
+            message
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class WorkspaceStore {
@@ -8,8 +25,8 @@ final class WorkspaceStore {
         case idle
         case refreshing(previous: WorkspaceSnapshot?)
         case ready(WorkspaceSnapshot)
-        case degraded(snapshot: WorkspaceSnapshot, message: String)
-        case failed(message: String)
+        case degraded(snapshot: WorkspaceSnapshot, message: WorkspaceStateMessage)
+        case failed(message: WorkspaceStateMessage)
     }
 
     let project: ProjectReference
@@ -28,7 +45,7 @@ final class WorkspaceStore {
         if let restoredSnapshot {
             state = .degraded(
                 snapshot: restoredSnapshot.markedStale(),
-                message: "显示上次可信状态，等待刷新"
+                message: .restoredSnapshot
             )
         } else {
             state = .idle
@@ -77,7 +94,7 @@ final class WorkspaceStore {
         } catch is CancellationError {
             if let previous {
                 state = previous.freshness == .stale
-                    ? .degraded(snapshot: previous, message: "刷新已取消，显示上次可信状态")
+                    ? .degraded(snapshot: previous, message: .refreshCancelled)
                     : .ready(previous)
             } else {
                 state = .idle
@@ -86,10 +103,10 @@ final class WorkspaceStore {
             if let previous {
                 state = .degraded(
                     snapshot: previous.markedStale(),
-                    message: error.localizedDescription
+                    message: .provider(error.localizedDescription)
                 )
             } else {
-                state = .failed(message: error.localizedDescription)
+                state = .failed(message: .provider(error.localizedDescription))
             }
         }
     }

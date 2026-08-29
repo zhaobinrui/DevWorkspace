@@ -87,6 +87,50 @@ final class SharedFoundationTests: XCTestCase {
         }
     }
 
+    func test_appLanguage_whenPreferredLanguageIsChinese_shouldSelectSimplifiedChinese() {
+        XCTAssertEqual(
+            AppLanguage.preferred(from: ["zh-Hans-CN", "en-US"]),
+            .simplifiedChinese
+        )
+        XCTAssertEqual(
+            AppLanguage.preferred(from: ["fr-FR"]),
+            .english
+        )
+    }
+
+    @MainActor
+    func test_appLanguageSettings_whenSelectionChanges_shouldPersistIt() {
+        let suiteName = "DevWorkspaceTests.Language.\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let settings = AppLanguageSettings(
+            userDefaults: userDefaults,
+            defaultLanguage: .english
+        )
+
+        settings.language = .simplifiedChinese
+
+        let restoredSettings = AppLanguageSettings(
+            userDefaults: userDefaults,
+            defaultLanguage: .english
+        )
+        XCTAssertEqual(restoredSettings.language, .simplifiedChinese)
+    }
+
+    func test_appLanguage_whenLocalizingKnownKey_shouldUseSelectedLanguage() {
+        XCTAssertEqual(
+            AppLanguage.english.localized("settings.general.language"),
+            "Language"
+        )
+        XCTAssertEqual(
+            AppLanguage.simplifiedChinese.localized("settings.general.language"),
+            "语言"
+        )
+    }
+
     func test_menuBarClickAction_whenRightMouseIsReleased_shouldShowContextMenu() {
         XCTAssertEqual(
             MenuBarClickAction(eventType: .rightMouseUp),
@@ -103,6 +147,15 @@ final class SharedFoundationTests: XCTestCase {
 
     @MainActor
     func test_contextMenu_whenBuilt_shouldExposeQuitActionAndKeyboardShortcut() throws {
+        let suiteName = "DevWorkspaceTests.Menu.\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        let languageSettings = AppLanguageSettings(
+            userDefaults: userDefaults,
+            defaultLanguage: .simplifiedChinese
+        )
         let identity = try resolver.resolve(
             rootDirectory: URL(
                 fileURLWithPath: "/private/tmp/menu-bar-test",
@@ -116,7 +169,8 @@ final class SharedFoundationTests: XCTestCase {
             store: WorkspaceStore(
                 project: ProjectReference(identity: identity, name: "Example"),
                 provider: PreviewWorkspaceSnapshotProvider()
-            )
+            ),
+            languageSettings: languageSettings
         )
 
         let menu = controller.makeContextMenu()
@@ -127,6 +181,13 @@ final class SharedFoundationTests: XCTestCase {
         )
         XCTAssertEqual(menu.items.last?.keyEquivalent, "q")
         XCTAssertNotNil(menu.items.last?.action)
+
+        languageSettings.language = .english
+
+        XCTAssertEqual(
+            controller.makeContextMenu().items.map(\.title),
+            ["Open Workspace", "Settings…", "", "Quit DevWorkspace"]
+        )
     }
 
     @MainActor

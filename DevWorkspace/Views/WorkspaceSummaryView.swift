@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct WorkspaceSummaryView: View {
+    @Environment(\.appLanguage) private var appLanguage
+
     let state: WorkspaceStore.State
 
     var body: some View {
@@ -9,7 +11,7 @@ struct WorkspaceSummaryView: View {
 
             if let snapshot {
                 if snapshot.origin == .preview {
-                    Label("框架预览数据", systemImage: "hammer")
+                    Label("workspace.preview-data", systemImage: "hammer")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -19,7 +21,7 @@ struct WorkspaceSummaryView: View {
             }
 
             if let message {
-                Text(message)
+                Text(message.localized(in: appLanguage))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -28,7 +30,10 @@ struct WorkspaceSummaryView: View {
     }
 
     private var statusHeader: some View {
-        let presentation = WorkspaceStatusPresentation(state: state)
+        let presentation = WorkspaceStatusPresentation(
+            state: state,
+            language: appLanguage
+        )
 
         return HStack(spacing: DevSpaceSpacing.small) {
             DevSpaceStatusBadge(
@@ -52,7 +57,7 @@ struct WorkspaceSummaryView: View {
                 Text("Git")
                     .font(DevSpaceTypography.sectionLabel)
                     .foregroundStyle(.secondary)
-                Text("\(git.branch) · ↑\(git.commitsAhead) ↓\(git.commitsBehind) · \(git.changedFileCount) files changed")
+                Text(gitSummary(git))
                     .font(DevSpaceTypography.body.monospacedDigit())
             }
         }
@@ -62,7 +67,7 @@ struct WorkspaceSummaryView: View {
     private func servicesSection(_ services: [ServiceSummary]) -> some View {
         if !services.isEmpty {
             VStack(alignment: .leading, spacing: DevSpaceSpacing.small) {
-                Text("Services")
+                Text("workspace.section.services")
                     .font(DevSpaceTypography.sectionLabel)
                     .foregroundStyle(.secondary)
 
@@ -97,13 +102,24 @@ struct WorkspaceSummaryView: View {
         }
     }
 
-    private var message: String? {
+    private var message: WorkspaceStateMessage? {
         switch state {
         case let .degraded(_, message), let .failed(message):
             message
         case .idle, .refreshing, .ready:
             nil
         }
+    }
+
+    private func gitSummary(_ git: GitSummary) -> String {
+        String(
+            format: appLanguage.localized("workspace.git.summary-format"),
+            locale: appLanguage.locale,
+            git.branch,
+            Int64(git.commitsAhead),
+            Int64(git.commitsBehind),
+            Int64(git.changedFileCount)
+        )
     }
 }
 

@@ -2,6 +2,8 @@ import AppKit
 
 @MainActor
 final class DevWorkspaceApplicationDelegate: NSObject, NSApplicationDelegate {
+    let languageSettings = AppLanguageSettings()
+
     private var menuBarController: MenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -27,7 +29,10 @@ final class DevWorkspaceApplicationDelegate: NSObject, NSApplicationDelegate {
             provider: PreviewWorkspaceSnapshotProvider()
         )
 
-        menuBarController = MenuBarController(store: store)
+        menuBarController = MenuBarController(
+            store: store,
+            languageSettings: languageSettings
+        )
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(

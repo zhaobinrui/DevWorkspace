@@ -1,0 +1,72 @@
+"language.name.english" = "English";
+"language.name.simplified-chinese" = "Simplified Chinese";
+
+"settings.tab.general" = "General";
+"settings.tab.appearance" = "Appearance";
+"settings.tab.shortcuts" = "Shortcuts";
+"settings.tab.privacy" = "Privacy";
+"settings.tab.updates" = "Updates";
+"settings.tab.license" = "License";
+
+"settings.general.product" = "Product";
+"settings.general.suite" = "Suite";
+"settings.general.data-source" = "Data source";
+"settings.general.data-source.preview" = "Framework preview";
+"settings.general.language" = "Language";
+"settings.general.preview-note" = "Real Git, port, and dependency adapters will be added incrementally during the DevWorkspace MVP.";
+
+"settings.appearance.product-accent" = "Product accent";
+"settings.appearance.ready" = "Ready";
+"settings.appearance.needs-attention" = "Needs Attention";
+"settings.appearance.note" = "DevSpace Design Token v1 provides shared spacing, corner radius, typography, and semantic states while each product keeps its own accent color. Appearance styles will be enabled when that feature is implemented.";
+
+"settings.shortcuts.unavailable" = "Global shortcuts are not enabled yet";
+"settings.shortcuts.note" = "Shortcuts must be explicitly configured by the user, remain available when the menu bar icon is hidden, and be checked for conflicts before saving.";
+
+"settings.privacy.local-first" = "Local First";
+"settings.privacy.ownership-note" = "Project roots, Git status, ports, and dependency data belong to DevWorkspace and are not stored in a database shared with other DevSpace apps.";
+
+"settings.updates.version" = "Version";
+"settings.updates.build" = "Build";
+
+"settings.license.independent-entitlement" = "Independent entitlement";
+
+"policy.update.summary" = "Each DevSpace app checks and installs updates independently.";
+"policy.update.preview-status" = "Automatic update checks are not enabled in this preview build.";
+"policy.license.summary" = "DevMeter, DevWorkspace, and DevMemory keep independent entitlements.";
+"policy.license.bundle-rule" = "A DevSpace Bundle grants each installed app its own entitlement; it does not create a runtime dependency.";
+"policy.license.preview-status" = "This preview build does not require license activation.";
+"policy.privacy.summary" = "Local First: project data remains on this Mac unless you explicitly approve a future sharing feature.";
+"policy.privacy.current-build" = "This preview build does not transmit project data, use tracking, or include third-party runtime SDKs.";
+
+"workspace.action.refresh" = "Refresh";
+"workspace.action.open" = "Open Workspace";
+"workspace.preview-data" = "Framework preview data";
+"workspace.section.services" = "Services";
+"workspace.git.summary-format" = "%@ · ↑%lld ↓%lld · %lld files changed";
+
+"workspace.status.idle" = "Not Loaded";
+"workspace.status.refreshing" = "Refreshing";
+"workspace.status.stale" = "Status Stale";
+"workspace.status.load-failed" = "Load Failed";
+"workspace.status.stopped" = "Stopped";
+"workspace.status.starting" = "Starting";
+"workspace.status.ready" = "Ready";
+"workspace.status.degraded" = "Partially Available";
+"workspace.status.failed" = "Failed";
+
+"workspace.message.restored-snapshot" = "Showing the last trusted status while waiting to refresh.";
+"workspace.message.refresh-cancelled" = "Refresh was cancelled; showing the last trusted status.";
+
+"menu.open-workspace" = "Open Workspace";
+"menu.settings" = "Settings…";
+"menu.quit-format" = "Quit %@";
+"window.settings-title-format" = "%@ Settings";
+
+"status.canonical.inactive" = "Stopped";
+"status.canonical.in-progress" = "Starting";
+"status.canonical.ready" = "Ready";
+"status.canonical.needs-attention" = "Needs Attention";
+"status.canonical.failed" = "Failed";
+"status.canonical.offline" = "Offline";
+"status.accessibility-format" = "%@: %@";

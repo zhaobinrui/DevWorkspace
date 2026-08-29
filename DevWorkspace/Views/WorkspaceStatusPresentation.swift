@@ -12,33 +12,60 @@ struct WorkspaceStatusPresentation {
         semanticStatus.token.color
     }
 
-    init(state: WorkspaceStore.State) {
+    init(state: WorkspaceStore.State, language: AppLanguage) {
         switch state {
         case .idle:
-            self.init(title: "尚未加载", semanticStatus: .offline)
+            self.init(
+                title: language.localized("workspace.status.idle"),
+                semanticStatus: .offline
+            )
         case .refreshing:
-            self.init(title: "正在刷新", semanticStatus: .inProgress)
+            self.init(
+                title: language.localized("workspace.status.refreshing"),
+                semanticStatus: .inProgress
+            )
         case let .ready(snapshot):
-            self = Self(lifecycle: snapshot.lifecycle)
+            self = Self(lifecycle: snapshot.lifecycle, language: language)
         case .degraded:
-            self.init(title: "状态已过期", semanticStatus: .needsAttention)
+            self.init(
+                title: language.localized("workspace.status.stale"),
+                semanticStatus: .needsAttention
+            )
         case .failed:
-            self.init(title: "加载失败", semanticStatus: .failed)
+            self.init(
+                title: language.localized("workspace.status.load-failed"),
+                semanticStatus: .failed
+            )
         }
     }
 
-    private init(lifecycle: WorkspaceLifecycle) {
+    private init(lifecycle: WorkspaceLifecycle, language: AppLanguage) {
         switch lifecycle {
         case .stopped:
-            self.init(title: "已停止", semanticStatus: .inactive)
+            self.init(
+                title: language.localized("workspace.status.stopped"),
+                semanticStatus: .inactive
+            )
         case .starting:
-            self.init(title: "正在启动", semanticStatus: .inProgress)
+            self.init(
+                title: language.localized("workspace.status.starting"),
+                semanticStatus: .inProgress
+            )
         case .ready:
-            self.init(title: "已就绪", semanticStatus: .ready)
+            self.init(
+                title: language.localized("workspace.status.ready"),
+                semanticStatus: .ready
+            )
         case .degraded:
-            self.init(title: "部分可用", semanticStatus: .needsAttention)
+            self.init(
+                title: language.localized("workspace.status.degraded"),
+                semanticStatus: .needsAttention
+            )
         case .failed:
-            self.init(title: "运行失败", semanticStatus: .failed)
+            self.init(
+                title: language.localized("workspace.status.failed"),
+                semanticStatus: .failed
+            )
         }
     }
 

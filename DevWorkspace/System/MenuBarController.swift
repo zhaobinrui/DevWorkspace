@@ -14,14 +14,19 @@ enum MenuBarClickAction: Equatable, Sendable {
 @MainActor
 final class MenuBarController: NSObject {
     private let store: WorkspaceStore
+    private let languageSettings: AppLanguageSettings
     private let statusItem: NSStatusItem
     private let popover: NSPopover
 
     private var workspaceWindowController: NSWindowController?
     private var settingsWindowController: NSWindowController?
 
-    init(store: WorkspaceStore) {
+    init(
+        store: WorkspaceStore,
+        languageSettings: AppLanguageSettings
+    ) {
         self.store = store
+        self.languageSettings = languageSettings
         statusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength
         )
@@ -31,7 +36,7 @@ final class MenuBarController: NSObject {
 
         configureStatusItem()
         configurePopover()
-        observeStoreState()
+        observeApplicationState()
     }
 
     private func configureStatusItem() {
@@ -46,12 +51,14 @@ final class MenuBarController: NSObject {
     }
 
     private func configurePopover() {
-        let content = MenuBarContentView(
-            store: store,
-            openWorkspace: { [weak self] in
-                self?.showWorkspace()
-            }
-        )
+        let content = AppLanguageRootView(settings: languageSettings) {
+            MenuBarContentView(
+                store: store,
+                openWorkspace: { [weak self] in
+                    self?.showWorkspace()
+                }
+            )
+        }
         let hostingController = NSHostingController(rootView: content)
 
         popover.behavior = .transient
@@ -63,22 +70,32 @@ final class MenuBarController: NSObject {
         popover.contentViewController = hostingController
     }
 
-    private func observeStoreState() {
+    private func observeApplicationState() {
         withObservationTracking {
-            updateStatusItem(for: store.state)
+            updateStatusItem(
+                for: store.state,
+                language: languageSettings.language
+            )
+            updateLocalizedWindowTitles(language: languageSettings.language)
         } onChange: { [weak self] in
             Task { @MainActor in
-                self?.observeStoreState()
+                self?.observeApplicationState()
             }
         }
     }
 
-    private func updateStatusItem(for state: WorkspaceStore.State) {
+    private func updateStatusItem(
+        for state: WorkspaceStore.State,
+        language: AppLanguage
+    ) {
         guard let button = statusItem.button else {
             return
         }
 
-        let presentation = WorkspaceStatusPresentation(state: state)
+        let presentation = WorkspaceStatusPresentation(
+            state: state,
+            language: language
+        )
         let icon = DevSpaceProduct.workspace.icon
         let image = NSImage(named: NSImage.Name(icon.menuBarAssetName))
             ?? NSImage(
@@ -128,23 +145,28 @@ final class MenuBarController: NSObject {
     }
 
     func makeContextMenu() -> NSMenu {
+        let language = languageSettings.language
         let menu = NSMenu()
         menu.addItem(
             menuItem(
-                title: "打开工作区",
+                title: language.localized("menu.open-workspace"),
                 action: #selector(showWorkspaceFromMenu)
             )
         )
         menu.addItem(
             menuItem(
-                title: "设置…",
+                title: language.localized("menu.settings"),
                 action: #selector(showSettingsFromMenu)
             )
         )
         menu.addItem(.separator())
         menu.addItem(
             menuItem(
-                title: "退出 \(DevSpaceProduct.workspace.displayName)",
+                title: String(
+                    format: language.localized("menu.quit-format"),
+                    locale: language.locale,
+                    DevSpaceProduct.workspace.displayName
+                ),
                 action: #selector(terminateApplication),
                 keyEquivalent: "q"
             )
@@ -174,7 +196,9 @@ final class MenuBarController: NSObject {
     private func showWorkspace() {
         if workspaceWindowController == nil {
             let hostingController = NSHostingController(
-                rootView: WorkspaceDashboardView(store: store)
+                rootView: AppLanguageRootView(settings: languageSettings) {
+                    WorkspaceDashboardView(store: store)
+                }
             )
             let window = NSWindow(contentViewController: hostingController)
             window.title = DevSpaceProduct.workspace.displayName
@@ -201,9 +225,11 @@ final class MenuBarController: NSObject {
     @objc
     private func showSettingsFromMenu() {
         if settingsWindowController == nil {
-            let hostingController = NSHostingController(rootView: SettingsView())
+            let hostingController = NSHostingController(
+                rootView: SettingsView(languageSettings: languageSettings)
+            )
             let window = NSWindow(contentViewController: hostingController)
-            window.title = "\(DevSpaceProduct.workspace.displayName) 设置"
+            window.title = settingsWindowTitle(language: languageSettings.language)
             window.styleMask = [.titled, .closable]
             window.setContentSize(
                 NSSize(
@@ -227,6 +253,20 @@ final class MenuBarController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
         windowController.showWindow(nil)
         window.makeKeyAndOrderFront(nil)
+    }
+
+    private func updateLocalizedWindowTitles(language: AppLanguage) {
+        settingsWindowController?.window?.title = settingsWindowTitle(
+            language: language
+        )
+    }
+
+    private func settingsWindowTitle(language: AppLanguage) -> String {
+        String(
+            format: language.localized("window.settings-title-format"),
+            locale: language.locale,
+            DevSpaceProduct.workspace.displayName
+        )
     }
 
     @objc

@@ -1,0 +1,72 @@
+"language.name.english" = "英语";
+"language.name.simplified-chinese" = "简体中文";
+
+"settings.tab.general" = "通用";
+"settings.tab.appearance" = "外观";
+"settings.tab.shortcuts" = "快捷键";
+"settings.tab.privacy" = "隐私";
+"settings.tab.updates" = "更新";
+"settings.tab.license" = "许可";
+
+"settings.general.product" = "产品";
+"settings.general.suite" = "套件";
+"settings.general.data-source" = "数据来源";
+"settings.general.data-source.preview" = "框架预览";
+"settings.general.language" = "语言";
+"settings.general.preview-note" = "真实 Git、端口和依赖适配器将在 DevWorkspace MVP 中逐步接入。";
+
+"settings.appearance.product-accent" = "产品强调色";
+"settings.appearance.ready" = "已就绪";
+"settings.appearance.needs-attention" = "需要关注";
+"settings.appearance.note" = "DevSpace Design Token v1 使用统一间距、圆角、字体与语义状态；每款产品保留独立强调色。皮肤选择将在外观功能落地时启用。";
+
+"settings.shortcuts.unavailable" = "全局快捷键尚未启用";
+"settings.shortcuts.note" = "快捷键必须由用户明确配置，隐藏菜单栏图标后仍可呼出，并在保存前检测冲突。";
+
+"settings.privacy.local-first" = "本地优先";
+"settings.privacy.ownership-note" = "项目根目录、Git 状态、端口和依赖数据归 DevWorkspace 所有，不与其他 DevSpace App 共享数据库。";
+
+"settings.updates.version" = "版本";
+"settings.updates.build" = "构建版本";
+
+"settings.license.independent-entitlement" = "独立权益";
+
+"policy.update.summary" = "每款 DevSpace App 独立检查并安装更新。";
+"policy.update.preview-status" = "当前预览版本尚未启用自动更新检查。";
+"policy.license.summary" = "DevMeter、DevWorkspace 和 DevMemory 分别维护独立权益。";
+"policy.license.bundle-rule" = "DevSpace Bundle 为每个已安装 App 提供独立权益，不形成运行时依赖。";
+"policy.license.preview-status" = "当前预览版本无需激活许可。";
+"policy.privacy.summary" = "本地优先：除非你明确授权未来的共享功能，否则项目数据仅保留在这台 Mac 上。";
+"policy.privacy.current-build" = "当前预览版本不会传输项目数据、进行跟踪或包含第三方运行时 SDK。";
+
+"workspace.action.refresh" = "刷新";
+"workspace.action.open" = "打开工作区";
+"workspace.preview-data" = "框架预览数据";
+"workspace.section.services" = "服务";
+"workspace.git.summary-format" = "%@ · ↑%lld ↓%lld · %lld 个文件已更改";
+
+"workspace.status.idle" = "尚未加载";
+"workspace.status.refreshing" = "正在刷新";
+"workspace.status.stale" = "状态已过期";
+"workspace.status.load-failed" = "加载失败";
+"workspace.status.stopped" = "已停止";
+"workspace.status.starting" = "正在启动";
+"workspace.status.ready" = "已就绪";
+"workspace.status.degraded" = "部分可用";
+"workspace.status.failed" = "运行失败";
+
+"workspace.message.restored-snapshot" = "显示上次可信状态，等待刷新。";
+"workspace.message.refresh-cancelled" = "刷新已取消，显示上次可信状态。";
+
+"menu.open-workspace" = "打开工作区";
+"menu.settings" = "设置…";
+"menu.quit-format" = "退出 %@";
+"window.settings-title-format" = "%@ 设置";
+
+"status.canonical.inactive" = "已停止";
+"status.canonical.in-progress" = "正在启动";
+"status.canonical.ready" = "已就绪";
+"status.canonical.needs-attention" = "需要关注";
+"status.canonical.failed" = "失败";
+"status.canonical.offline" = "离线";
+"status.accessibility-format" = "%@: %@";

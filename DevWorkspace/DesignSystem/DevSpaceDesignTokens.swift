@@ -83,6 +83,25 @@ enum DevSpaceSemanticStatus: String, Codable, CaseIterable, Sendable {
             )
         }
     }
+
+    func canonicalLabel(in language: AppLanguage) -> String {
+        let key = switch self {
+        case .inactive:
+            "status.canonical.inactive"
+        case .inProgress:
+            "status.canonical.in-progress"
+        case .ready:
+            "status.canonical.ready"
+        case .needsAttention:
+            "status.canonical.needs-attention"
+        case .failed:
+            "status.canonical.failed"
+        case .offline:
+            "status.canonical.offline"
+        }
+
+        return language.localized(key)
+    }
 }
 
 struct DevSpaceStatusToken {
@@ -92,6 +111,8 @@ struct DevSpaceStatusToken {
 }
 
 struct DevSpaceStatusBadge: View {
+    @Environment(\.appLanguage) private var appLanguage
+
     let status: DevSpaceSemanticStatus
     let title: String
 
@@ -105,6 +126,15 @@ struct DevSpaceStatusBadge: View {
             .padding(.vertical, DevSpaceSpacing.xSmall)
             .background(token.color.opacity(0.12), in: Capsule())
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(token.canonicalLabel): \(title)")
+            .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        String(
+            format: appLanguage.localized("status.accessibility-format"),
+            locale: appLanguage.locale,
+            status.canonicalLabel(in: appLanguage),
+            title
+        )
     }
 }

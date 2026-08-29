@@ -20,7 +20,7 @@ struct WorkspaceDashboardView: View {
                         await store.refresh()
                     }
                 } label: {
-                    Label("刷新", systemImage: "arrow.clockwise")
+                    Label("workspace.action.refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(store.isRefreshing)
             }

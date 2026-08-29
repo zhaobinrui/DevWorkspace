@@ -17,7 +17,7 @@ final class WorkspaceStoreTests: XCTestCase {
 
         await store.refresh()
 
-        XCTAssertEqual(store.state, .failed(message: "offline"))
+        XCTAssertEqual(store.state, .failed(message: .provider("offline")))
     }
 
     func test_refresh_whenRefreshFails_shouldPreserveLastTrustedSnapshotAsStale() async {
@@ -30,7 +30,10 @@ final class WorkspaceStoreTests: XCTestCase {
 
         XCTAssertEqual(
             store.state,
-            .degraded(snapshot: snapshot.markedStale(), message: "offline")
+            .degraded(
+                snapshot: snapshot.markedStale(),
+                message: .provider("offline")
+            )
         )
     }
 
@@ -68,7 +71,7 @@ final class WorkspaceStoreTests: XCTestCase {
             store.state,
             .degraded(
                 snapshot: snapshot.markedStale(),
-                message: "显示上次可信状态，等待刷新"
+                message: .restoredSnapshot
             )
         )
     }

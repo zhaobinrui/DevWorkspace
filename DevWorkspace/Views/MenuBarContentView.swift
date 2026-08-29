@@ -25,13 +25,13 @@ struct MenuBarContentView: View {
                         await store.refresh()
                     }
                 } label: {
-                    Label("刷新", systemImage: "arrow.clockwise")
+                    Label("workspace.action.refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(store.isRefreshing)
 
                 Spacer()
 
-                Button("打开工作区", action: openWorkspace)
+                Button("workspace.action.open", action: openWorkspace)
             }
         }
         .padding(DevSpaceSpacing.large)
