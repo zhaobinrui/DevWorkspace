@@ -3,6 +3,11 @@ import AppKit
 @MainActor
 final class DevWorkspaceApplicationDelegate: NSObject, NSApplicationDelegate {
     let languageSettings = AppLanguageSettings()
+    lazy var shortcutSettings = AppShortcutSettings(
+        registrar: CarbonGlobalShortcutRegistrar()
+    ) { [weak self] in
+        self?.menuBarController?.showWorkspace()
+    }
 
     private var menuBarController: MenuBarController?
 
@@ -33,7 +38,8 @@ final class DevWorkspaceApplicationDelegate: NSObject, NSApplicationDelegate {
 
         menuBarController = MenuBarController(
             store: store,
-            languageSettings: languageSettings
+            languageSettings: languageSettings,
+            shortcutSettings: shortcutSettings
         )
     }
 

@@ -8,7 +8,8 @@ struct DevWorkspaceApp: App {
     var body: some Scene {
         Settings {
             SettingsView(
-                languageSettings: applicationDelegate.languageSettings
+                languageSettings: applicationDelegate.languageSettings,
+                shortcutSettings: applicationDelegate.shortcutSettings
             )
         }
     }

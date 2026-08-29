@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var languageSettings: AppLanguageSettings
+    @Bindable var shortcutSettings: AppShortcutSettings
 
     var body: some View {
         TabView {
@@ -15,7 +16,7 @@ struct SettingsView: View {
                     Label("settings.tab.appearance", systemImage: "paintbrush")
                 }
 
-            ShortcutsSettingsPane()
+            ShortcutsSettingsPane(shortcutSettings: shortcutSettings)
                 .tabItem {
                     Label("settings.tab.shortcuts", systemImage: "command")
                 }
@@ -104,11 +105,72 @@ private struct AppearanceSettingsPane: View {
 }
 
 private struct ShortcutsSettingsPane: View {
+    @Environment(\.appLanguage) private var appLanguage
+    @Bindable var shortcutSettings: AppShortcutSettings
+
     var body: some View {
         SettingsPane(title: "settings.tab.shortcuts") {
-            Label("settings.shortcuts.unavailable", systemImage: "keyboard")
+            LabeledContent("settings.shortcuts.global") {
+                HStack(spacing: DevSpaceSpacing.small) {
+                    GlobalShortcutRecorder(
+                        shortcut: shortcutSettings.shortcut,
+                        recordingPrompt: appLanguage.localized(
+                            "settings.shortcuts.recording"
+                        ),
+                        accessibilityLabel: appLanguage.localized(
+                            "settings.shortcuts.global"
+                        )
+                    ) { candidate in
+                        shortcutSettings.apply(candidate)
+                    }
+                    .frame(width: 118)
+
+                    Button("settings.shortcuts.reset") {
+                        shortcutSettings.resetToDefault()
+                    }
+                }
+            }
+
+            shortcutStatus
+
+            Toggle(
+                "settings.shortcuts.show-menu-bar-icon",
+                isOn: $shortcutSettings.isMenuBarIconVisible
+            )
+            .disabled(!shortcutSettings.isShortcutRegistered)
+
             Text("settings.shortcuts.note")
                 .settingsNote()
+        }
+    }
+
+    @ViewBuilder
+    private var shortcutStatus: some View {
+        switch shortcutSettings.registrationIssue {
+        case let .conflict(shortcut):
+            Label(
+                String(
+                    format: appLanguage.localized(
+                        "settings.shortcuts.conflict-format"
+                    ),
+                    locale: appLanguage.locale,
+                    shortcut.displayName
+                ),
+                systemImage: "exclamationmark.triangle"
+            )
+            .foregroundStyle(.orange)
+        case .systemFailure:
+            Label(
+                "settings.shortcuts.registration-failed",
+                systemImage: "exclamationmark.triangle"
+            )
+            .foregroundStyle(.orange)
+        case nil:
+            Label(
+                "settings.shortcuts.active",
+                systemImage: "checkmark.circle"
+            )
+            .foregroundStyle(.secondary)
         }
     }
 }

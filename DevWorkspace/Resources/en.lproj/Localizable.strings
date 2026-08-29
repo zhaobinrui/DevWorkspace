@@ -20,8 +20,14 @@
 "settings.appearance.needs-attention" = "Needs Attention";
 "settings.appearance.note" = "DevSpace Design Token v1 provides shared spacing, corner radius, typography, and semantic states while each product keeps its own accent color. Appearance styles will be enabled when that feature is implemented.";
 
-"settings.shortcuts.unavailable" = "Global shortcuts are not enabled yet";
-"settings.shortcuts.note" = "Shortcuts must be explicitly configured by the user, remain available when the menu bar icon is hidden, and be checked for conflicts before saving.";
+"settings.shortcuts.global" = "Open workspace";
+"settings.shortcuts.recording" = "Press shortcut";
+"settings.shortcuts.reset" = "Reset";
+"settings.shortcuts.active" = "The global shortcut is active.";
+"settings.shortcuts.conflict-format" = "%@ is already used by another app. The previous shortcut remains active.";
+"settings.shortcuts.registration-failed" = "The global shortcut could not be registered. Keep the menu bar icon visible and try another shortcut.";
+"settings.shortcuts.show-menu-bar-icon" = "Show menu bar icon";
+"settings.shortcuts.note" = "Click the shortcut field, then press a key with Command, Option, or Control; Shift can be added. When the menu bar icon is hidden, the global shortcut still opens DevWorkspace.";
 
 "settings.privacy.local-first" = "Local First";
 "settings.privacy.ownership-note" = "Project roots, Git status, ports, and dependency data belong to DevWorkspace and are not stored in a database shared with other DevSpace apps.";

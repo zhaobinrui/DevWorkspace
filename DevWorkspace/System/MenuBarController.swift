@@ -15,6 +15,7 @@ enum MenuBarClickAction: Equatable, Sendable {
 final class MenuBarController: NSObject {
     private let store: WorkspaceStore
     private let languageSettings: AppLanguageSettings
+    private let shortcutSettings: AppShortcutSettings
     private let statusItem: NSStatusItem
     private let popover: NSPopover
 
@@ -24,10 +25,12 @@ final class MenuBarController: NSObject {
 
     init(
         store: WorkspaceStore,
-        languageSettings: AppLanguageSettings
+        languageSettings: AppLanguageSettings,
+        shortcutSettings: AppShortcutSettings
     ) {
         self.store = store
         self.languageSettings = languageSettings
+        self.shortcutSettings = shortcutSettings
         statusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength
         )
@@ -81,11 +84,21 @@ final class MenuBarController: NSObject {
                 language: languageSettings.language
             )
             updateLocalizedWindowTitles(language: languageSettings.language)
+            updateMenuBarVisibility(
+                isVisible: shortcutSettings.effectiveMenuBarIconVisibility
+            )
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.observeApplicationState()
             }
         }
+    }
+
+    private func updateMenuBarVisibility(isVisible: Bool) {
+        if !isVisible {
+            popover.performClose(nil)
+        }
+        statusItem.isVisible = isVisible
     }
 
     private func updateStatusItem(
@@ -198,7 +211,7 @@ final class MenuBarController: NSObject {
         showWorkspace()
     }
 
-    private func showWorkspace() {
+    func showWorkspace() {
         if workspaceWindowController == nil {
             let hostingController = NSHostingController(
                 rootView: AppLanguageRootView(settings: languageSettings) {
@@ -231,7 +244,10 @@ final class MenuBarController: NSObject {
     private func showSettingsFromMenu() {
         if settingsWindowController == nil {
             let hostingController = NSHostingController(
-                rootView: SettingsView(languageSettings: languageSettings)
+                rootView: SettingsView(
+                    languageSettings: languageSettings,
+                    shortcutSettings: shortcutSettings
+                )
             )
             let window = NSWindow(contentViewController: hostingController)
             window.title = settingsWindowTitle(language: languageSettings.language)

@@ -20,8 +20,14 @@
 "settings.appearance.needs-attention" = "需要关注";
 "settings.appearance.note" = "DevSpace Design Token v1 使用统一间距、圆角、字体与语义状态；每款产品保留独立强调色。皮肤选择将在外观功能落地时启用。";
 
-"settings.shortcuts.unavailable" = "全局快捷键尚未启用";
-"settings.shortcuts.note" = "快捷键必须由用户明确配置，隐藏菜单栏图标后仍可呼出，并在保存前检测冲突。";
+"settings.shortcuts.global" = "打开工作区";
+"settings.shortcuts.recording" = "请按快捷键";
+"settings.shortcuts.reset" = "恢复默认";
+"settings.shortcuts.active" = "全局快捷键已启用。";
+"settings.shortcuts.conflict-format" = "%@ 已被其他 App 占用，原快捷键仍然有效。";
+"settings.shortcuts.registration-failed" = "无法注册全局快捷键。请保持菜单栏图标可见并尝试其他快捷键。";
+"settings.shortcuts.show-menu-bar-icon" = "显示菜单栏图标";
+"settings.shortcuts.note" = "点击快捷键区域，再按下含 Command、Option 或 Control 的按键组合，也可附加 Shift。隐藏菜单栏图标后，仍可通过全局快捷键打开 DevWorkspace。";
 
 "settings.privacy.local-first" = "本地优先";
 "settings.privacy.ownership-note" = "项目根目录、Git 状态、端口和依赖数据归 DevWorkspace 所有，不与其他 DevSpace App 共享数据库。";

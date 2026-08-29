@@ -131,6 +131,137 @@ final class SharedFoundationTests: XCTestCase {
         )
     }
 
+    func test_globalShortcut_whenFormatted_shouldUseCanonicalModifierOrder() {
+        let shortcut = GlobalShortcut(
+            keyCode: 0,
+            key: "A",
+            modifiers: [.command, .shift, .control, .option]
+        )
+
+        XCTAssertEqual(shortcut.displayName, "⌃⌥⇧⌘A")
+        XCTAssertTrue(shortcut.isValid)
+        XCTAssertFalse(
+            GlobalShortcut(
+                keyCode: 0,
+                key: "A",
+                modifiers: []
+            ).isValid
+        )
+        XCTAssertFalse(
+            GlobalShortcut(
+                keyCode: 0,
+                key: "A",
+                modifiers: [.shift]
+            ).isValid
+        )
+    }
+
+    @MainActor
+    func test_shortcutSettings_whenShortcutRegisters_shouldPersistAndInvokeIt() {
+        let suiteName = "DevWorkspaceTests.Shortcut.\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        let registrar = TestGlobalShortcutRegistrar()
+        var invocationCount = 0
+        let settings = AppShortcutSettings(
+            registrar: registrar,
+            userDefaults: userDefaults
+        ) {
+            invocationCount += 1
+        }
+        let replacement = GlobalShortcut(
+            keyCode: 1,
+            key: "S",
+            modifiers: [.control, .option]
+        )
+
+        XCTAssertTrue(settings.apply(replacement))
+        registrar.invoke()
+
+        XCTAssertEqual(settings.shortcut, replacement)
+        XCTAssertEqual(invocationCount, 1)
+        XCTAssertEqual(
+            userDefaults.integer(forKey: AppShortcutSettings.keyCodeKey),
+            1
+        )
+        XCTAssertEqual(
+            userDefaults.string(forKey: AppShortcutSettings.keyLabelKey),
+            "S"
+        )
+
+        let restoredSettings = AppShortcutSettings(
+            registrar: TestGlobalShortcutRegistrar(),
+            userDefaults: userDefaults,
+            onInvoke: {}
+        )
+        XCTAssertEqual(restoredSettings.shortcut, replacement)
+        XCTAssertTrue(restoredSettings.isShortcutRegistered)
+    }
+
+    @MainActor
+    func test_shortcutSettings_whenReplacementConflicts_shouldKeepPreviousShortcut() {
+        let suiteName = "DevWorkspaceTests.Shortcut.\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        let conflictingShortcut = GlobalShortcut(
+            keyCode: 1,
+            key: "S",
+            modifiers: [.command, .option]
+        )
+        let registrar = TestGlobalShortcutRegistrar(
+            conflictingShortcuts: [conflictingShortcut]
+        )
+        let settings = AppShortcutSettings(
+            registrar: registrar,
+            userDefaults: userDefaults,
+            onInvoke: {}
+        )
+
+        XCTAssertFalse(settings.apply(conflictingShortcut))
+
+        XCTAssertEqual(settings.shortcut, .defaultWorkspace)
+        XCTAssertEqual(registrar.activeShortcut, .defaultWorkspace)
+        XCTAssertEqual(
+            settings.registrationIssue,
+            .conflict(conflictingShortcut)
+        )
+    }
+
+    @MainActor
+    func test_shortcutSettings_whenLaunchRegistrationFails_shouldRestoreMenuBarIcon() {
+        let suiteName = "DevWorkspaceTests.Shortcut.\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        userDefaults.set(
+            false,
+            forKey: AppShortcutSettings.menuBarIconVisibleKey
+        )
+        let registrar = TestGlobalShortcutRegistrar(
+            conflictingShortcuts: [.defaultWorkspace]
+        )
+
+        let settings = AppShortcutSettings(
+            registrar: registrar,
+            userDefaults: userDefaults,
+            onInvoke: {}
+        )
+
+        XCTAssertFalse(settings.isShortcutRegistered)
+        XCTAssertTrue(settings.isMenuBarIconVisible)
+        XCTAssertTrue(settings.effectiveMenuBarIconVisibility)
+        XCTAssertTrue(
+            userDefaults.bool(
+                forKey: AppShortcutSettings.menuBarIconVisibleKey
+            )
+        )
+    }
+
     func test_menuBarClickAction_whenRightMouseIsReleased_shouldShowContextMenu() {
         XCTAssertEqual(
             MenuBarClickAction(eventType: .rightMouseUp),
@@ -170,7 +301,12 @@ final class SharedFoundationTests: XCTestCase {
                 project: ProjectReference(identity: identity, name: "Example"),
                 provider: PreviewWorkspaceSnapshotProvider()
             ),
-            languageSettings: languageSettings
+            languageSettings: languageSettings,
+            shortcutSettings: AppShortcutSettings(
+                registrar: TestGlobalShortcutRegistrar(),
+                userDefaults: userDefaults,
+                onInvoke: {}
+            )
         )
 
         let menu = controller.makeContextMenu()
@@ -200,5 +336,31 @@ final class SharedFoundationTests: XCTestCase {
 
         XCTAssertNotNil(icon)
         XCTAssertEqual(icon?.isTemplate, true)
+    }
+}
+
+@MainActor
+private final class TestGlobalShortcutRegistrar: GlobalShortcutRegistering {
+    private let conflictingShortcuts: Set<GlobalShortcut>
+    private var handler: (@MainActor () -> Void)?
+    private(set) var activeShortcut: GlobalShortcut?
+
+    init(conflictingShortcuts: Set<GlobalShortcut> = []) {
+        self.conflictingShortcuts = conflictingShortcuts
+    }
+
+    func register(
+        _ shortcut: GlobalShortcut,
+        handler: @escaping @MainActor () -> Void
+    ) throws {
+        guard !conflictingShortcuts.contains(shortcut) else {
+            throw GlobalShortcutRegistrationError.conflict
+        }
+        activeShortcut = shortcut
+        self.handler = handler
+    }
+
+    func invoke() {
+        handler?()
     }
 }
