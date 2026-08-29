@@ -1,6 +1,7 @@
 import Foundation
 
 struct ProjectIdentifier: Hashable, RawRepresentable, Sendable {
+    // 前缀同时承担命名空间和格式版本职责，避免未来跨应用传递时把普通哈希误认成项目 ID。
     static let prefix = "devspace:project:v1:"
     private static let digestLength = 64
     private static let lowercaseHexDigits = Set("0123456789abcdef")
@@ -66,6 +67,7 @@ struct ProjectIdentity: Codable, Hashable, Sendable {
             return .distinctProjects
         }
 
+        // 稳定 ID 相同但根目录变化可能表示项目移动，也可能是错误绑定；危险操作前必须由用户确认。
         return canonicalRootDirectory == candidate.canonicalRootDirectory
             ? .sameProject
             : .requiresUserResolution
@@ -81,6 +83,7 @@ struct ProjectIdentity: Codable, Hashable, Sendable {
             throw ProjectIdentityError.missingRootPath
         }
 
+        // 该方法只在用户确认移动后更新路径，保留原稳定 ID，避免跨应用引用因目录变化而失效。
         return Self(
             identifier: identifier,
             source: source,

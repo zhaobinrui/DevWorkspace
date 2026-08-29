@@ -24,6 +24,8 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     }
 
     func localized(_ key: String, bundle: Bundle = .main) -> String {
+        // Bundle.main 会跟随系统首选语言；显式打开目标 lproj，才能让应用内切换立即生效，
+        // 而不要求用户退出并重新启动应用。
         guard
             let localizationPath = bundle.path(
                 forResource: rawValue,
@@ -110,6 +112,8 @@ struct AppLanguageRootView<Content: View>: View {
     }
 
     var body: some View {
+        // LocalizedStringKey 读取 locale，而策略文案通过 appLanguage 手动查表；两者必须一起
+        // 注入，才能保证 SwiftUI 原生文案和非 View 层文案在切换语言后保持一致。
         content
             .environment(\.appLanguage, settings.language)
             .environment(\.locale, settings.language.locale)

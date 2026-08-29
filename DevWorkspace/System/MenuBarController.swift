@@ -18,6 +18,7 @@ final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
 
+    // 关闭窗口后继续持有控制器，既避免 AppKit 释放窗口，也保留同一 SwiftUI 状态树供再次打开。
     private var workspaceWindowController: NSWindowController?
     private var settingsWindowController: NSWindowController?
 
@@ -46,6 +47,7 @@ final class MenuBarController: NSObject {
 
         button.target = self
         button.action = #selector(statusItemPressed(_:))
+        // NSStatusItem 默认只处理主按钮；显式订阅右键释放，才能提供不依赖 Popover 的退出菜单。
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.imagePosition = .imageLeading
     }
@@ -71,6 +73,8 @@ final class MenuBarController: NSObject {
     }
 
     private func observeApplicationState() {
+        // withObservationTracking 的回调只通知下一次变更；变更后递归注册新的 tracking，
+        // 才能持续观察 store 与语言设置，同时保证所有 AppKit 更新都留在主线程。
         withObservationTracking {
             updateStatusItem(
                 for: store.state,
@@ -103,6 +107,7 @@ final class MenuBarController: NSObject {
                 accessibilityDescription: presentation.title
             )
         image?.isTemplate = true
+        // 模板图像由 macOS 根据菜单栏明暗和可访问性状态着色，不能保留资源自身颜色。
         image?.accessibilityDescription = presentation.title
 
         button.image = image

@@ -19,6 +19,8 @@ struct LocalProjectIdentityResolver: ProjectIdentityResolving, Sendable {
         let seed: String
         let source: ProjectIdentitySource
 
+        // 优先使用仓库声明的 ID，其次使用文件系统对象身份，最后才退化到规范化路径。
+        // 这个顺序让项目移动时尽量保持身份稳定，同时避免仅凭名称合并不同项目。
         if let declaredMetadataID {
             seed = "metadata:\(declaredMetadataID.uuidString.lowercased())"
             source = .declaredMetadata
@@ -30,6 +32,7 @@ struct LocalProjectIdentityResolver: ProjectIdentityResolving, Sendable {
             source = .canonicalRoot
         }
 
+        // 加入固定的领域与版本前缀做 domain separation，避免相同 seed 与其他哈希用途发生碰撞。
         let digest = SHA256.hash(
             data: Data("devspace.project.identity/v1\0\(seed)".utf8)
         )
@@ -54,6 +57,8 @@ struct LocalProjectIdentityResolver: ProjectIdentityResolving, Sendable {
             return nil
         }
 
+        // fileResourceIdentifier 是不透明对象，不能依赖 description 的未定义格式；安全归档后再
+        // Base64 编码可得到结构化字节表示，归档失败则安全退化到规范路径。
         guard let data = try? NSKeyedArchiver.archivedData(
             withRootObject: value,
             requiringSecureCoding: true

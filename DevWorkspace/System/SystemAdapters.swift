@@ -28,6 +28,8 @@ struct LocalWorkspaceSnapshotProvider: WorkspaceSnapshotProviding, Sendable {
     }
 
     func snapshot(for project: ProjectReference) async throws -> WorkspaceSnapshot {
+        // 三个只读适配器彼此独立，使用结构化并发并行采集；任一失败都会取消同组任务，
+        // 由 WorkspaceStore 统一保留旧快照并进入 degraded，而不是发布部分伪完整结果。
         async let git = gitReader.status(for: project)
         async let applicationServices = portScanner.applicationServices(for: project)
         async let dependencies = dependencyReader.dependencies(for: project)

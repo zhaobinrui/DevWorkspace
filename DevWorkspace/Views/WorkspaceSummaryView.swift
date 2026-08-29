@@ -92,6 +92,7 @@ struct WorkspaceSummaryView: View {
     }
 
     private var snapshot: WorkspaceSnapshot? {
+        // 刷新时继续渲染 previous，避免短暂空白；是否过期由 freshness 和状态提示明确表达。
         switch state {
         case let .refreshing(previous):
             previous

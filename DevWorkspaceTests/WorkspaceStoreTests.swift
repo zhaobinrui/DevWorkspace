@@ -112,6 +112,7 @@ final class WorkspaceStoreTests: XCTestCase {
     }
 }
 
+// actor 将脚本结果的消费串行化，使并发测试也能稳定复现成功、失败和取消的状态转换顺序。
 private actor ScriptedSnapshotProvider: WorkspaceSnapshotProviding {
     enum Outcome: Sendable {
         case snapshot(WorkspaceSnapshot)

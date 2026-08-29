@@ -43,6 +43,7 @@ final class WorkspaceStore {
         self.provider = provider
 
         if let restoredSnapshot {
+            // 磁盘恢复的数据只能作为上一次可信状态展示，未经本次进程重新采集不能标记为实时。
             state = .degraded(
                 snapshot: restoredSnapshot.markedStale(),
                 message: .restoredSnapshot
@@ -84,6 +85,7 @@ final class WorkspaceStore {
             return
         }
 
+        // 刷新期间保留旧快照，避免菜单栏短暂退回空状态；新结果成功后再原子替换。
         let previous = currentSnapshot
         state = .refreshing(previous: previous)
 
@@ -92,6 +94,7 @@ final class WorkspaceStore {
             try Task.checkCancellation()
             state = .ready(snapshot)
         } catch is CancellationError {
+            // 取消是调用方主动结束工作，不等同于数据源故障，因此恢复原可信状态且不制造错误。
             if let previous {
                 state = previous.freshness == .stale
                     ? .degraded(snapshot: previous, message: .refreshCancelled)
@@ -100,6 +103,7 @@ final class WorkspaceStore {
                 state = .idle
             }
         } catch {
+            // 采集失败时继续展示最后一次可信数据，但明确降级为 stale，避免旧数据伪装成实时状态。
             if let previous {
                 state = .degraded(
                     snapshot: previous.markedStale(),
