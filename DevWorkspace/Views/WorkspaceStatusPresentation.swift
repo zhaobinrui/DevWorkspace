@@ -75,6 +75,46 @@ struct WorkspaceStatusPresentation {
     }
 }
 
+enum MenuBarVisualPriority: Equatable, Sendable {
+    case quiet
+    case active
+    case elevated
+}
+
+struct MenuBarStatusPresentation {
+    let title: String
+    let semanticStatus: DevSpaceSemanticStatus
+    let visualPriority: MenuBarVisualPriority
+
+    var visibleTitle: String {
+        visualPriority == .quiet ? "" : title
+    }
+
+    var showsTitle: Bool {
+        !visibleTitle.isEmpty
+    }
+
+    init(state: WorkspaceStore.State, language: AppLanguage) {
+        let workspace = WorkspaceStatusPresentation(
+            state: state,
+            language: language
+        )
+
+        title = workspace.title
+        semanticStatus = workspace.semanticStatus
+        // 菜单栏模板图标由系统统一着色；通过是否展开文字调整视觉权重，
+        // 才能在不依赖颜色的前提下让短暂状态和异常状态被看见。
+        visualPriority = switch workspace.semanticStatus {
+        case .inactive, .ready:
+            .quiet
+        case .inProgress:
+            .active
+        case .needsAttention, .failed, .offline:
+            .elevated
+        }
+    }
+}
+
 struct ServiceHealthPresentation {
     let title: String
     let semanticStatus: DevSpaceSemanticStatus

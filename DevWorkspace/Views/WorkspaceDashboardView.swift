@@ -23,6 +23,8 @@ struct WorkspaceDashboardView: View {
                     Label("workspace.action.refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(store.isRefreshing)
+                .keyboardShortcut("r", modifiers: .command)
+                .accessibilityIdentifier("workspace.refresh")
             }
 
             WorkspaceSummaryView(state: store.state)

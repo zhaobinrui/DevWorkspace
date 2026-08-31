@@ -60,6 +60,7 @@ final class MenuBarController: NSObject {
             MenuBarContentView(
                 store: store,
                 openWorkspace: { [weak self] in
+                    self?.popover.performClose(nil)
                     self?.showWorkspace()
                 }
             )
@@ -109,7 +110,7 @@ final class MenuBarController: NSObject {
             return
         }
 
-        let presentation = WorkspaceStatusPresentation(
+        let presentation = MenuBarStatusPresentation(
             state: state,
             language: language
         )
@@ -124,7 +125,10 @@ final class MenuBarController: NSObject {
         image?.accessibilityDescription = presentation.title
 
         button.image = image
-        button.title = presentation.title
+        button.title = presentation.visibleTitle
+        button.imagePosition = presentation.showsTitle
+            ? .imageLeading
+            : .imageOnly
         button.toolTip = "\(DevSpaceProduct.workspace.displayName) — \(presentation.title)"
         button.setAccessibilityLabel(button.toolTip)
     }
@@ -168,13 +172,15 @@ final class MenuBarController: NSObject {
         menu.addItem(
             menuItem(
                 title: language.localized("menu.open-workspace"),
-                action: #selector(showWorkspaceFromMenu)
+                action: #selector(showWorkspaceFromMenu),
+                keyEquivalent: "o"
             )
         )
         menu.addItem(
             menuItem(
                 title: language.localized("menu.settings"),
-                action: #selector(showSettingsFromMenu)
+                action: #selector(showSettingsFromMenu),
+                keyEquivalent: ","
             )
         )
         menu.addItem(.separator())
@@ -203,6 +209,9 @@ final class MenuBarController: NSObject {
             keyEquivalent: keyEquivalent
         )
         item.target = self
+        if !keyEquivalent.isEmpty {
+            item.keyEquivalentModifierMask = .command
+        }
         return item
     }
 

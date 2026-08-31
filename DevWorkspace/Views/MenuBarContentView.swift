@@ -28,10 +28,14 @@ struct MenuBarContentView: View {
                     Label("workspace.action.refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(store.isRefreshing)
+                .keyboardShortcut("r", modifiers: .command)
+                .accessibilityIdentifier("menuBar.refresh")
 
                 Spacer()
 
                 Button("workspace.action.open", action: openWorkspace)
+                    .keyboardShortcut("o", modifiers: .command)
+                    .accessibilityIdentifier("menuBar.openWorkspace")
             }
         }
         .padding(DevSpaceSpacing.large)

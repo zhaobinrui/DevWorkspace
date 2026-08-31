@@ -41,6 +41,12 @@ final class DevWorkspaceApplicationDelegate: NSObject, NSApplicationDelegate {
             languageSettings: languageSettings,
             shortcutSettings: shortcutSettings
         )
+
+        // 菜单栏本身就是状态摘要；不能等用户先打开 Popover 才开始读取状态，
+        // 否则启动后会长期停留在“未加载”，与真实工作区状态不一致。
+        Task {
+            await store.refresh()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(

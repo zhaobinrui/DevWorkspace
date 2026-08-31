@@ -169,6 +169,83 @@ final class SharedFoundationTests: XCTestCase {
         }
     }
 
+    func test_menuBarStatusPresentation_whenStateIsStable_shouldKeepTitleQuiet() throws {
+        let project = ProjectReference(
+            identity: try resolver.resolve(
+                rootDirectory: URL(
+                    fileURLWithPath: "/private/tmp/menu-bar-status-quiet",
+                    isDirectory: true
+                )
+            ),
+            name: "Example"
+        )
+
+        for lifecycle in [WorkspaceLifecycle.stopped, .ready] {
+            let presentation = MenuBarStatusPresentation(
+                state: .ready(
+                    WorkspaceSnapshot(
+                        project: project,
+                        lifecycle: lifecycle,
+                        git: nil,
+                        services: [],
+                        observedAt: Date(timeIntervalSince1970: 1_700_000_000),
+                        freshness: .current,
+                        origin: .local
+                    )
+                ),
+                language: .english
+            )
+
+            XCTAssertEqual(presentation.visualPriority, .quiet)
+            XCTAssertFalse(presentation.showsTitle)
+            XCTAssertEqual(presentation.visibleTitle, "")
+        }
+    }
+
+    func test_menuBarStatusPresentation_whenStateNeedsVisibility_shouldExposeTitle()
+        throws
+    {
+        let identity = try resolver.resolve(
+            rootDirectory: URL(
+                fileURLWithPath: "/private/tmp/menu-bar-status-visible",
+                isDirectory: true
+            )
+        )
+        let project = ProjectReference(identity: identity, name: "Example")
+        let snapshot = WorkspaceSnapshot(
+            project: project,
+            lifecycle: .ready,
+            git: nil,
+            services: [],
+            observedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            freshness: .stale,
+            origin: .local
+        )
+        let cases: [(WorkspaceStore.State, MenuBarVisualPriority)] = [
+            (.idle, .elevated),
+            (.refreshing(previous: nil), .active),
+            (
+                .degraded(
+                    snapshot: snapshot,
+                    message: .sourceReportedStale
+                ),
+                .elevated
+            ),
+            (.failed(message: .provider("offline")), .elevated),
+        ]
+
+        for (state, expectedPriority) in cases {
+            let presentation = MenuBarStatusPresentation(
+                state: state,
+                language: .english
+            )
+
+            XCTAssertEqual(presentation.visualPriority, expectedPriority)
+            XCTAssertTrue(presentation.showsTitle)
+            XCTAssertFalse(presentation.visibleTitle.isEmpty)
+        }
+    }
+
     func test_appLanguage_whenPreferredLanguageIsChinese_shouldSelectSimplifiedChinese() {
         XCTAssertEqual(
             AppLanguage.preferred(from: ["zh-Hans-CN", "en-US"]),
@@ -359,7 +436,7 @@ final class SharedFoundationTests: XCTestCase {
     }
 
     @MainActor
-    func test_contextMenu_whenBuilt_shouldExposeQuitActionAndKeyboardShortcut() throws {
+    func test_contextMenu_whenBuilt_shouldExposePrimaryActionsAndKeyboardShortcuts() throws {
         let suiteName = "DevWorkspaceTests.Menu.\(UUID().uuidString)"
         let userDefaults = UserDefaults(suiteName: suiteName)!
         defer {
@@ -397,7 +474,12 @@ final class SharedFoundationTests: XCTestCase {
             menu.items.map(\.title),
             ["打开工作区", "设置…", "", "退出 DevWorkspace"]
         )
-        XCTAssertEqual(menu.items.last?.keyEquivalent, "q")
+        XCTAssertEqual(menu.items.map(\.keyEquivalent), ["o", ",", "", "q"])
+        XCTAssertTrue(
+            menu.items
+                .filter { !$0.keyEquivalent.isEmpty }
+                .allSatisfy { $0.keyEquivalentModifierMask == .command }
+        )
         XCTAssertNotNil(menu.items.last?.action)
 
         languageSettings.language = .english
