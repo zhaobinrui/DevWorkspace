@@ -9,7 +9,8 @@ struct DevWorkspaceApp: App {
         Settings {
             SettingsView(
                 languageSettings: applicationDelegate.languageSettings,
-                shortcutSettings: applicationDelegate.shortcutSettings
+                shortcutSettings: applicationDelegate.shortcutSettings,
+                appearanceSettings: applicationDelegate.appearanceSettings
             )
         }
     }

@@ -76,7 +76,7 @@ struct PreviewWorkspaceSnapshotProvider: WorkspaceSnapshotProviding, Sendable {
                     id: "redis",
                     name: "Redis",
                     kind: .dependency,
-                    health: .stopped,
+                    health: .healthy,
                     port: 6379
                 ),
             ],

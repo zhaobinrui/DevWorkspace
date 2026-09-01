@@ -3,6 +3,7 @@ import AppKit
 @MainActor
 final class DevWorkspaceApplicationDelegate: NSObject, NSApplicationDelegate {
     let languageSettings = AppLanguageSettings()
+    let appearanceSettings = AppearanceSettings()
     lazy var shortcutSettings = AppShortcutSettings(
         registrar: CarbonGlobalShortcutRegistrar()
     ) { [weak self] in
@@ -29,7 +30,7 @@ final class DevWorkspaceApplicationDelegate: NSObject, NSApplicationDelegate {
 
         let project = ProjectReference(
             identity: identity,
-            name: DevSpaceProduct.workspace.displayName
+            name: "ECM API"
         )
         let store = WorkspaceStore(
             project: project,
@@ -39,6 +40,7 @@ final class DevWorkspaceApplicationDelegate: NSObject, NSApplicationDelegate {
         menuBarController = MenuBarController(
             store: store,
             languageSettings: languageSettings,
+            appearanceSettings: appearanceSettings,
             shortcutSettings: shortcutSettings
         )
 

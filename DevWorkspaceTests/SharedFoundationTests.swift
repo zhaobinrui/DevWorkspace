@@ -279,6 +279,87 @@ final class SharedFoundationTests: XCTestCase {
         XCTAssertEqual(restoredSettings.language, .simplifiedChinese)
     }
 
+    @MainActor
+    func test_appearanceSettings_whenSelectionsChange_shouldPersistThem() {
+        let suiteName = "DevWorkspaceTests.Appearance.\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        let settings = AppearanceSettings(userDefaults: userDefaults)
+
+        settings.skin = .focusedFrost
+        settings.transparency = .substantial
+        settings.glow = .off
+        settings.colorMode = .dark
+        settings.previewBackground = .light
+
+        let restored = AppearanceSettings(userDefaults: userDefaults)
+        XCTAssertEqual(restored.skin, .focusedFrost)
+        XCTAssertEqual(restored.transparency, .substantial)
+        XCTAssertEqual(restored.glow, .off)
+        XCTAssertEqual(restored.colorMode, .dark)
+        XCTAssertEqual(restored.previewBackground, .light)
+    }
+
+    func test_menuBarAppearance_whenSkinChanges_shouldResolveDistinctMaterials() {
+        let crystal = MenuBarAppearanceResolver.resolve(
+            preferences: AppearancePreferences(
+                skin: .crystalAir,
+                transparency: .system,
+                glow: .subtle,
+                colorMode: .system
+            ),
+            accessibility: .standard
+        )
+        let softGlow = MenuBarAppearanceResolver.resolve(
+            preferences: AppearancePreferences(
+                skin: .softGlow,
+                transparency: .system,
+                glow: .subtle,
+                colorMode: .system
+            ),
+            accessibility: .standard
+        )
+        let focused = MenuBarAppearanceResolver.resolve(
+            preferences: AppearancePreferences(
+                skin: .focusedFrost,
+                transparency: .system,
+                glow: .prominent,
+                colorMode: .system
+            ),
+            accessibility: .standard
+        )
+
+        XCTAssertEqual(crystal.materialRole, .ultraThin)
+        XCTAssertEqual(softGlow.materialRole, .regular)
+        XCTAssertEqual(focused.materialRole, .opaque)
+        XCTAssertEqual(focused.glow, .subtle)
+    }
+
+    func test_menuBarAppearance_whenAccessibilityRequiresReadability_shouldOverrideEffects() {
+        let resolved = MenuBarAppearanceResolver.resolve(
+            preferences: AppearancePreferences(
+                skin: .crystalAir,
+                transparency: .clear,
+                glow: .prominent,
+                colorMode: .light
+            ),
+            accessibility: MenuBarAccessibilityEnvironment(
+                reduceTransparency: true,
+                increaseContrast: true,
+                differentiateWithoutColor: true,
+                reduceMotion: true
+            )
+        )
+
+        XCTAssertEqual(resolved.materialRole, .opaque)
+        XCTAssertEqual(resolved.glow, .off)
+        XCTAssertGreaterThanOrEqual(resolved.borderOpacity, 0.78)
+        XCTAssertTrue(resolved.usesEmphasizedControls)
+        XCTAssertFalse(resolved.allowsMotion)
+    }
+
     func test_appLanguage_whenLocalizingKnownKey_shouldUseSelectedLanguage() {
         XCTAssertEqual(
             AppLanguage.english.localized("settings.general.language"),

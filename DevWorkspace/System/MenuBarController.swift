@@ -15,6 +15,7 @@ enum MenuBarClickAction: Equatable, Sendable {
 final class MenuBarController: NSObject {
     private let store: WorkspaceStore
     private let languageSettings: AppLanguageSettings
+    private let appearanceSettings: AppearanceSettings
     private let shortcutSettings: AppShortcutSettings
     private let statusItem: NSStatusItem
     private let popover: NSPopover
@@ -26,10 +27,12 @@ final class MenuBarController: NSObject {
     init(
         store: WorkspaceStore,
         languageSettings: AppLanguageSettings,
+        appearanceSettings: AppearanceSettings = AppearanceSettings(),
         shortcutSettings: AppShortcutSettings
     ) {
         self.store = store
         self.languageSettings = languageSettings
+        self.appearanceSettings = appearanceSettings
         self.shortcutSettings = shortcutSettings
         statusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength
@@ -59,9 +62,19 @@ final class MenuBarController: NSObject {
         let content = AppLanguageRootView(settings: languageSettings) {
             MenuBarContentView(
                 store: store,
+                appearanceSettings: appearanceSettings,
                 openWorkspace: { [weak self] in
                     self?.popover.performClose(nil)
                     self?.showWorkspace()
+                },
+                openProjectFolder: { [weak self] rootDirectory in
+                    self?.openProjectFolder(rootDirectory)
+                },
+                openExternalURL: { [weak self] url in
+                    self?.openExternalURL(url)
+                },
+                copyText: { [weak self] text in
+                    self?.copyText(text)
                 }
             )
         }
@@ -71,7 +84,7 @@ final class MenuBarController: NSObject {
         popover.animates = true
         popover.contentSize = NSSize(
             width: DevSpaceLayout.menuBarWidth,
-            height: 300
+            height: 600
         )
         popover.contentViewController = hostingController
     }
@@ -225,6 +238,9 @@ final class MenuBarController: NSObject {
             let hostingController = NSHostingController(
                 rootView: AppLanguageRootView(settings: languageSettings) {
                     WorkspaceDashboardView(store: store)
+                        .preferredColorScheme(
+                            appearanceSettings.colorMode.preferredColorScheme
+                        )
                 }
             )
             let window = NSWindow(contentViewController: hostingController)
@@ -255,7 +271,8 @@ final class MenuBarController: NSObject {
             let hostingController = NSHostingController(
                 rootView: SettingsView(
                     languageSettings: languageSettings,
-                    shortcutSettings: shortcutSettings
+                    shortcutSettings: shortcutSettings,
+                    appearanceSettings: appearanceSettings
                 )
             )
             let window = NSWindow(contentViewController: hostingController)
@@ -297,6 +314,26 @@ final class MenuBarController: NSObject {
             locale: language.locale,
             DevSpaceProduct.workspace.displayName
         )
+    }
+
+    private func openProjectFolder(_ rootDirectory: URL) {
+        guard rootDirectory.isFileURL else {
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([rootDirectory])
+    }
+
+    private func openExternalURL(_ url: URL) {
+        guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func copyText(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
 
     @objc

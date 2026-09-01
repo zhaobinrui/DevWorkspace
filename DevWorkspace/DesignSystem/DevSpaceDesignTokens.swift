@@ -22,8 +22,8 @@ enum DevSpaceStrokeWidth {
 
 enum DevSpaceLayout {
     static let menuBarWidth: CGFloat = 360
-    static let settingsWidth: CGFloat = 560
-    static let settingsHeight: CGFloat = 420
+    static let settingsWidth: CGFloat = 680
+    static let settingsHeight: CGFloat = 620
     static let dashboardMinimumWidth: CGFloat = 720
     static let dashboardMinimumHeight: CGFloat = 480
 }

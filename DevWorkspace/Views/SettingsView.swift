@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var languageSettings: AppLanguageSettings
     @Bindable var shortcutSettings: AppShortcutSettings
+    @Bindable var appearanceSettings: AppearanceSettings
 
     var body: some View {
         TabView {
@@ -11,7 +12,7 @@ struct SettingsView: View {
                     Label("settings.tab.general", systemImage: "gearshape")
                 }
 
-            AppearanceSettingsPane()
+            AppearanceSettingsPane(appearanceSettings: appearanceSettings)
                 .tabItem {
                     Label("settings.tab.appearance", systemImage: "paintbrush")
                 }
@@ -42,6 +43,7 @@ struct SettingsView: View {
         )
         .environment(\.appLanguage, languageSettings.language)
         .environment(\.locale, languageSettings.language.locale)
+        .preferredColorScheme(appearanceSettings.colorMode.preferredColorScheme)
     }
 }
 
@@ -72,33 +74,6 @@ private struct GeneralSettingsPane: View {
             }
 
             Text("settings.general.preview-note")
-                .settingsNote()
-        }
-    }
-}
-
-private struct AppearanceSettingsPane: View {
-    @Environment(\.appLanguage) private var appLanguage
-
-    var body: some View {
-        SettingsPane(title: "settings.tab.appearance") {
-            LabeledContent(
-                "settings.appearance.product-accent",
-                value: DevSpaceProduct.workspace.accentHex
-            )
-
-            HStack(spacing: DevSpaceSpacing.small) {
-                DevSpaceStatusBadge(
-                    status: .ready,
-                    title: appLanguage.localized("settings.appearance.ready")
-                )
-                DevSpaceStatusBadge(
-                    status: .needsAttention,
-                    title: appLanguage.localized("settings.appearance.needs-attention")
-                )
-            }
-
-            Text("settings.appearance.note")
                 .settingsNote()
         }
     }
