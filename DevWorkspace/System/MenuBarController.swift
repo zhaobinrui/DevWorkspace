@@ -17,23 +17,34 @@ final class MenuBarController: NSObject {
     private let languageSettings: AppLanguageSettings
     private let appearanceSettings: AppearanceSettings
     private let shortcutSettings: AppShortcutSettings
+    private let notificationSettings: NotificationSettings
+    private let notificationManager: any UserNotificationManaging
+    private let refreshController: WorkspaceRefreshController
     private let statusItem: NSStatusItem
     private let popover: NSPopover
 
     // 关闭窗口后继续持有控制器，既避免 AppKit 释放窗口，也保留同一 SwiftUI 状态树供再次打开。
     private var workspaceWindowController: NSWindowController?
     private var settingsWindowController: NSWindowController?
+    private var isWorkspaceWindowVisible = false
 
     init(
         store: WorkspaceStore,
         languageSettings: AppLanguageSettings,
         appearanceSettings: AppearanceSettings = AppearanceSettings(),
-        shortcutSettings: AppShortcutSettings
+        shortcutSettings: AppShortcutSettings,
+        notificationSettings: NotificationSettings = NotificationSettings(),
+        notificationManager: any UserNotificationManaging = SystemUserNotificationManager(),
+        refreshController: WorkspaceRefreshController? = nil
     ) {
         self.store = store
         self.languageSettings = languageSettings
         self.appearanceSettings = appearanceSettings
         self.shortcutSettings = shortcutSettings
+        self.notificationSettings = notificationSettings
+        self.notificationManager = notificationManager
+        self.refreshController = refreshController
+            ?? WorkspaceRefreshController(store: store)
         statusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength
         )
@@ -75,6 +86,9 @@ final class MenuBarController: NSObject {
                 },
                 copyText: { [weak self] text in
                     self?.copyText(text)
+                },
+                refresh: { [weak self] in
+                    await self?.refreshController.refreshNow()
                 }
             )
         }
@@ -82,11 +96,20 @@ final class MenuBarController: NSObject {
 
         popover.behavior = .transient
         popover.animates = true
+        popover.delegate = self
         popover.contentSize = NSSize(
             width: DevSpaceLayout.menuBarWidth,
             height: 600
         )
         popover.contentViewController = hostingController
+    }
+
+    func startMonitoring() {
+        refreshController.start()
+    }
+
+    func stopMonitoring() {
+        refreshController.stop()
     }
 
     private func observeApplicationState() {
@@ -237,7 +260,12 @@ final class MenuBarController: NSObject {
         if workspaceWindowController == nil {
             let hostingController = NSHostingController(
                 rootView: AppLanguageRootView(settings: languageSettings) {
-                    WorkspaceDashboardView(store: store)
+                    WorkspaceDashboardView(
+                        store: store,
+                        refresh: { [weak self] in
+                            await self?.refreshController.refreshNow()
+                        }
+                    )
                         .preferredColorScheme(
                             appearanceSettings.colorMode.preferredColorScheme
                         )
@@ -259,10 +287,13 @@ final class MenuBarController: NSObject {
             )
             window.center()
             window.isReleasedWhenClosed = false
+            window.delegate = self
             workspaceWindowController = NSWindowController(window: window)
         }
 
         show(windowController: workspaceWindowController)
+        isWorkspaceWindowVisible = true
+        updateRefreshVisibility()
     }
 
     @objc
@@ -272,7 +303,9 @@ final class MenuBarController: NSObject {
                 rootView: SettingsView(
                     languageSettings: languageSettings,
                     shortcutSettings: shortcutSettings,
-                    appearanceSettings: appearanceSettings
+                    appearanceSettings: appearanceSettings,
+                    notificationSettings: notificationSettings,
+                    notificationManager: notificationManager
                 )
             )
             let window = NSWindow(contentViewController: hostingController)
@@ -339,5 +372,55 @@ final class MenuBarController: NSObject {
     @objc
     private func terminateApplication() {
         NSApp.terminate(nil)
+    }
+
+    private func updateRefreshVisibility() {
+        refreshController.setVisible(
+            popover.isShown || isWorkspaceWindowVisible
+        )
+    }
+}
+
+extension MenuBarController: NSPopoverDelegate {
+    func popoverDidShow(_ notification: Notification) {
+        updateRefreshVisibility()
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        updateRefreshVisibility()
+    }
+}
+
+extension MenuBarController: NSWindowDelegate {
+    func windowDidBecomeKey(_ notification: Notification) {
+        guard notification.object as? NSWindow === workspaceWindowController?.window else {
+            return
+        }
+        isWorkspaceWindowVisible = true
+        updateRefreshVisibility()
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) {
+        guard notification.object as? NSWindow === workspaceWindowController?.window else {
+            return
+        }
+        isWorkspaceWindowVisible = false
+        updateRefreshVisibility()
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        guard notification.object as? NSWindow === workspaceWindowController?.window else {
+            return
+        }
+        isWorkspaceWindowVisible = true
+        updateRefreshVisibility()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard notification.object as? NSWindow === workspaceWindowController?.window else {
+            return
+        }
+        isWorkspaceWindowVisible = false
+        updateRefreshVisibility()
     }
 }

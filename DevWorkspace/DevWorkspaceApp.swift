@@ -10,7 +10,9 @@ struct DevWorkspaceApp: App {
             SettingsView(
                 languageSettings: applicationDelegate.languageSettings,
                 shortcutSettings: applicationDelegate.shortcutSettings,
-                appearanceSettings: applicationDelegate.appearanceSettings
+                appearanceSettings: applicationDelegate.appearanceSettings,
+                notificationSettings: applicationDelegate.notificationSettings,
+                notificationManager: applicationDelegate.notificationManager
             )
         }
     }

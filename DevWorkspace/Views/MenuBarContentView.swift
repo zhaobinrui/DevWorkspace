@@ -10,6 +10,7 @@ struct MenuBarContentView: View {
     let openProjectFolder: @MainActor (URL) -> Void
     let openExternalURL: @MainActor (URL) -> Void
     let copyText: @MainActor (String) -> Void
+    let refresh: @MainActor () async -> Void
 
     @State private var isAddressExpanded = true
 
@@ -48,7 +49,7 @@ struct MenuBarContentView: View {
         )
         .task {
             if store.shouldLoad {
-                await store.refresh()
+                await refresh()
             }
         }
     }
@@ -120,7 +121,7 @@ struct MenuBarContentView: View {
 
             Button {
                 Task {
-                    await store.refresh()
+                    await refresh()
                 }
             } label: {
                 Image(systemName: "arrow.clockwise")

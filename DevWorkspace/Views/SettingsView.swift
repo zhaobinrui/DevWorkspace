@@ -4,10 +4,16 @@ struct SettingsView: View {
     @Bindable var languageSettings: AppLanguageSettings
     @Bindable var shortcutSettings: AppShortcutSettings
     @Bindable var appearanceSettings: AppearanceSettings
+    @Bindable var notificationSettings: NotificationSettings
+    let notificationManager: any UserNotificationManaging
 
     var body: some View {
         TabView {
-            GeneralSettingsPane(languageSettings: languageSettings)
+            GeneralSettingsPane(
+                languageSettings: languageSettings,
+                notificationSettings: notificationSettings,
+                notificationManager: notificationManager
+            )
                 .tabItem {
                     Label("settings.tab.general", systemImage: "gearshape")
                 }
@@ -48,7 +54,10 @@ struct SettingsView: View {
 }
 
 private struct GeneralSettingsPane: View {
+    @Environment(\.appLanguage) private var appLanguage
     @Bindable var languageSettings: AppLanguageSettings
+    @Bindable var notificationSettings: NotificationSettings
+    let notificationManager: any UserNotificationManaging
 
     var body: some View {
         SettingsPane(title: "settings.tab.general") {
@@ -75,6 +84,84 @@ private struct GeneralSettingsPane: View {
 
             Text("settings.general.preview-note")
                 .settingsNote()
+
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(maxWidth: .infinity)
+                .frame(height: DevSpaceStrokeWidth.hairline)
+                .accessibilityHidden(true)
+
+            Label(
+                "settings.general.notifications",
+                systemImage: "bell.badge"
+            )
+            .font(.headline)
+
+            Toggle(
+                "settings.notifications.enabled",
+                isOn: Binding(
+                    get: { notificationSettings.isEnabled },
+                    set: { requestedValue in
+                        Task {
+                            await notificationSettings.setEnabled(
+                                requestedValue,
+                                using: notificationManager
+                            )
+                        }
+                    }
+                )
+            )
+            .disabled(notificationSettings.isRequestingAuthorization)
+
+            Toggle(
+                "settings.notifications.failure",
+                isOn: $notificationSettings.notifyOnFailure
+            )
+            .disabled(!notificationSettings.isEnabled)
+
+            Toggle(
+                "settings.notifications.needs-attention",
+                isOn: $notificationSettings.notifyOnNeedsAttention
+            )
+            .disabled(!notificationSettings.isEnabled)
+
+            Label(
+                authorizationDescription,
+                systemImage: authorizationSystemImage
+            )
+            .settingsNote()
+
+            Text("settings.notifications.privacy-note")
+                .settingsNote()
+        }
+        .task {
+            await notificationSettings.refreshAuthorization(
+                using: notificationManager
+            )
+        }
+    }
+
+    private var authorizationDescription: String {
+        let key = switch notificationSettings.authorizationState {
+        case .notDetermined:
+            "settings.notifications.authorization.not-determined"
+        case .denied:
+            "settings.notifications.authorization.denied"
+        case .authorized:
+            "settings.notifications.authorization.authorized"
+        }
+
+        return appLanguage.localized(key)
+    }
+
+    private var authorizationSystemImage: String {
+        switch notificationSettings.authorizationState {
+        case .notDetermined:
+            "questionmark.circle"
+        case .denied:
+            "bell.slash"
+        case .authorized:
+            "checkmark.circle"
         }
     }
 }

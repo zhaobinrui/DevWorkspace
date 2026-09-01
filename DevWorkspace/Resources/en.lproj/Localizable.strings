@@ -14,6 +14,15 @@
 "settings.general.data-source.preview" = "Framework preview";
 "settings.general.language" = "Language";
 "settings.general.preview-note" = "Real Git, port, and dependency adapters will be added incrementally during the DevWorkspace MVP.";
+"settings.general.notifications" = "Notifications";
+
+"settings.notifications.enabled" = "Allow actionable notifications";
+"settings.notifications.failure" = "Workspace failures";
+"settings.notifications.needs-attention" = "Needs-attention status";
+"settings.notifications.authorization.not-determined" = "macOS permission will be requested only when you enable notifications.";
+"settings.notifications.authorization.denied" = "Notification permission is disabled in System Settings.";
+"settings.notifications.authorization.authorized" = "Notification permission is available.";
+"settings.notifications.privacy-note" = "Notifications contain only a generic action prompt—never project names, paths, command output, or error details.";
 
 "settings.appearance.product-accent" = "Product accent";
 "settings.appearance.ready" = "Ready";
@@ -105,6 +114,11 @@
 "workspace.message.restored-snapshot" = "Showing the last trusted status while waiting to refresh.";
 "workspace.message.refresh-cancelled" = "Refresh was cancelled; showing the last trusted status.";
 "workspace.message.source-reported-stale" = "The data source returned an older snapshot; it is shown as stale.";
+
+"notification.workspace.failure.title" = "DevWorkspace refresh failed";
+"notification.workspace.failure.body" = "Open DevWorkspace to review the latest status and available recovery actions.";
+"notification.workspace.needs-attention.title" = "DevWorkspace needs attention";
+"notification.workspace.needs-attention.body" = "Open DevWorkspace to review the latest status before continuing.";
 
 "menu.open-workspace" = "Open Workspace";
 "menu.settings" = "Settings…";

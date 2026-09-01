@@ -49,7 +49,8 @@ final class UIRenderingTests: XCTestCase {
                             openWorkspace: {},
                             openProjectFolder: { _ in },
                             openExternalURL: { _ in },
-                            copyText: { _ in }
+                            copyText: { _ in },
+                            refresh: {}
                         )
                     }
                     .frame(width: 520, height: 680)
@@ -92,6 +93,27 @@ final class UIRenderingTests: XCTestCase {
                 height: DevSpaceLayout.settingsHeight
             ),
             destination: outputDirectory.appending(path: "appearance-settings.png")
+        )
+
+        let notificationSettings = NotificationSettings(userDefaults: defaults)
+        let notificationManager = UIRenderingNotificationManager()
+        try await render(
+            SettingsView(
+                languageSettings: languageSettings,
+                shortcutSettings: AppShortcutSettings(
+                    registrar: UIRenderingShortcutRegistrar(),
+                    userDefaults: defaults,
+                    onInvoke: {}
+                ),
+                appearanceSettings: appearanceSettings,
+                notificationSettings: notificationSettings,
+                notificationManager: notificationManager
+            ),
+            size: NSSize(
+                width: DevSpaceLayout.settingsWidth,
+                height: DevSpaceLayout.settingsHeight
+            ),
+            destination: outputDirectory.appending(path: "general-settings.png")
         )
     }
 
@@ -347,6 +369,27 @@ final class UIRenderingTests: XCTestCase {
             hints: [.interpolation: NSImageInterpolation.high]
         )
     }
+}
+
+@MainActor
+private final class UIRenderingNotificationManager: UserNotificationManaging {
+    func authorizationState() async -> NotificationAuthorizationState {
+        .notDetermined
+    }
+
+    func requestAuthorization() async -> NotificationAuthorizationState {
+        .notDetermined
+    }
+
+    func deliver(_ notification: WorkspaceLocalNotification) async throws {}
+}
+
+@MainActor
+private final class UIRenderingShortcutRegistrar: GlobalShortcutRegistering {
+    func register(
+        _ shortcut: GlobalShortcut,
+        handler: @escaping @MainActor () -> Void
+    ) throws {}
 }
 
 private struct NormalizedTopCrop {

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WorkspaceDashboardView: View {
     @Bindable var store: WorkspaceStore
+    let refresh: @MainActor () async -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: DevSpaceSpacing.xLarge) {
@@ -17,7 +18,7 @@ struct WorkspaceDashboardView: View {
 
                 Button {
                     Task {
-                        await store.refresh()
+                        await refresh()
                     }
                 } label: {
                     Label("workspace.action.refresh", systemImage: "arrow.clockwise")
@@ -39,7 +40,7 @@ struct WorkspaceDashboardView: View {
         )
         .task {
             if store.shouldLoad {
-                await store.refresh()
+                await refresh()
             }
         }
     }

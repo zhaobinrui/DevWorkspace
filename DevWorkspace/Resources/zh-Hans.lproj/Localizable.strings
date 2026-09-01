@@ -14,6 +14,15 @@
 "settings.general.data-source.preview" = "框架预览";
 "settings.general.language" = "语言";
 "settings.general.preview-note" = "真实 Git、端口和依赖适配器将在 DevWorkspace MVP 中逐步接入。";
+"settings.general.notifications" = "通知";
+
+"settings.notifications.enabled" = "允许可行动通知";
+"settings.notifications.failure" = "工作区失败";
+"settings.notifications.needs-attention" = "需要关注的状态";
+"settings.notifications.authorization.not-determined" = "仅在你启用通知时请求 macOS 权限。";
+"settings.notifications.authorization.denied" = "通知权限已在系统设置中关闭。";
+"settings.notifications.authorization.authorized" = "通知权限可用。";
+"settings.notifications.privacy-note" = "通知只包含通用操作提示，不显示项目名、路径、命令输出或错误详情。";
 
 "settings.appearance.product-accent" = "产品强调色";
 "settings.appearance.ready" = "已就绪";
@@ -105,6 +114,11 @@
 "workspace.message.restored-snapshot" = "显示上次可信状态，等待刷新。";
 "workspace.message.refresh-cancelled" = "刷新已取消，显示上次可信状态。";
 "workspace.message.source-reported-stale" = "数据源返回了较早的快照，已按过期状态展示。";
+
+"notification.workspace.failure.title" = "DevWorkspace 刷新失败";
+"notification.workspace.failure.body" = "请打开 DevWorkspace 查看最新状态和可用的恢复操作。";
+"notification.workspace.needs-attention.title" = "DevWorkspace 需要关注";
+"notification.workspace.needs-attention.body" = "请在继续前打开 DevWorkspace 查看最新状态。";
 
 "menu.open-workspace" = "打开工作区";
 "menu.settings" = "设置…";
