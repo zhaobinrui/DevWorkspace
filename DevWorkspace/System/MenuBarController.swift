@@ -27,6 +27,8 @@ final class MenuBarController: NSObject {
     private var workspaceWindowController: NSWindowController?
     private var settingsWindowController: NSWindowController?
     private var isWorkspaceWindowVisible = false
+    private var monitoringEnabled = false
+    private var monitoredProject: ProjectReference?
 
     init(
         store: WorkspaceStore,
@@ -105,17 +107,30 @@ final class MenuBarController: NSObject {
     }
 
     func startMonitoring() {
-        refreshController.start()
+        monitoringEnabled = true
+        synchronizeSelectedProject()
     }
 
     func stopMonitoring() {
+        monitoringEnabled = false
         refreshController.stop()
+    }
+
+    private func synchronizeSelectedProject() {
+        guard monitoringEnabled else { return }
+        let selected = store.project
+        if monitoredProject != selected || !refreshController.isRunning {
+            refreshController.stop()
+            monitoredProject = selected
+            if selected != nil { refreshController.start() }
+        }
     }
 
     private func observeApplicationState() {
         // withObservationTracking 的回调只通知下一次变更；变更后递归注册新的 tracking，
         // 才能持续观察 store 与语言设置，同时保证所有 AppKit 更新都留在主线程。
         withObservationTracking {
+            synchronizeSelectedProject()
             updateStatusItem(
                 for: store.state,
                 language: languageSettings.language
@@ -264,6 +279,9 @@ final class MenuBarController: NSObject {
                         store: store,
                         refresh: { [weak self] in
                             await self?.refreshController.refreshNow()
+                        },
+                        addProject: { [weak self] in
+                            self?.chooseProjectDirectory()
                         }
                     )
                         .preferredColorScheme(
@@ -281,8 +299,8 @@ final class MenuBarController: NSObject {
             ]
             window.setContentSize(
                 NSSize(
-                    width: DevSpaceLayout.dashboardMinimumWidth,
-                    height: DevSpaceLayout.dashboardMinimumHeight
+                    width: DevSpaceLayout.dashboardInitialWidth,
+                    height: DevSpaceLayout.dashboardInitialHeight
                 )
             )
             window.center()
@@ -323,6 +341,24 @@ final class MenuBarController: NSObject {
         }
 
         show(windowController: settingsWindowController)
+    }
+
+    private func chooseProjectDirectory() {
+        guard let window = workspaceWindowController?.window else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.prompt = languageSettings.language.localized("projects.add")
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let directory = panel.url else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                await self.store.addProject(at: directory)
+                await self.refreshController.refreshNow()
+            }
+        }
     }
 
     private func show(windowController: NSWindowController?) {

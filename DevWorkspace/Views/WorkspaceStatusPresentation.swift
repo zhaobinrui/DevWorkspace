@@ -26,9 +26,9 @@ struct WorkspaceStatusPresentation {
             )
         case let .ready(snapshot):
             self = Self(lifecycle: snapshot.lifecycle, language: language)
-        case .degraded:
+        case let .degraded(snapshot, _):
             self.init(
-                title: language.localized("workspace.status.stale"),
+                title: language.localized(snapshot.readings == nil ? "workspace.status.stale" : "workspace.status.read-errors"),
                 semanticStatus: .needsAttention
             )
         case .failed:
@@ -41,6 +41,8 @@ struct WorkspaceStatusPresentation {
 
     private init(lifecycle: WorkspaceLifecycle, language: AppLanguage) {
         switch lifecycle {
+        case .observed:
+            self.init(title: language.localized("workspace.status.observed"), semanticStatus: .ready)
         case .stopped:
             self.init(
                 title: language.localized("workspace.status.stopped"),

@@ -25,7 +25,9 @@ enum DevSpaceLayout {
     static let settingsWidth: CGFloat = 680
     static let settingsHeight: CGFloat = 620
     static let dashboardMinimumWidth: CGFloat = 720
-    static let dashboardMinimumHeight: CGFloat = 480
+    static let dashboardMinimumHeight: CGFloat = 560
+    static let dashboardInitialWidth: CGFloat = 820
+    static let dashboardInitialHeight: CGFloat = 680
 }
 
 enum DevSpaceTypography {

@@ -70,7 +70,7 @@ private struct GeneralSettingsPane: View {
                 value: DevSpaceBrand.name
             )
             LabeledContent("settings.general.data-source") {
-                Text("settings.general.data-source.preview")
+                Text("settings.general.data-source.local")
             }
             Picker(
                 "settings.general.language",
@@ -82,7 +82,7 @@ private struct GeneralSettingsPane: View {
                 }
             }
 
-            Text("settings.general.preview-note")
+            Text("settings.general.local-note")
                 .settingsNote()
 
             Rectangle()

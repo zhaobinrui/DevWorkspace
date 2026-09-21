@@ -19,11 +19,14 @@ struct MenuBarContentView: View {
             productHeader
             Divider()
             projectHeader
-            lifecycleStrip
-
-            if let snapshot {
+            if snapshot?.origin == .preview { lifecycleStrip }
+            if snapshot?.readings != nil {
+                LocalWorkspaceReadingsView(store: store, compact: true)
+            } else if let snapshot {
                 readyMessage(snapshot)
                 workspaceSteps(snapshot)
+            } else if store.project == nil {
+                Text("projects.empty-note").font(.callout).foregroundStyle(.secondary)
             }
 
             if let stateMessage {
@@ -97,20 +100,20 @@ struct MenuBarContentView: View {
 
             VStack(alignment: .leading, spacing: DevSpaceSpacing.xSmall) {
                 HStack(spacing: DevSpaceSpacing.small) {
-                    Text(store.project.name)
+                    Text(store.project?.name ?? appLanguage.localized("projects.empty"))
                         .font(.title3.bold())
                         .lineLimit(1)
 
                     statusLabel
                 }
 
-                if let snapshot, let git = snapshot.git {
+                if let snapshot, snapshot.origin == .preview, let git = snapshot.git {
                     Label(gitSummary(git), systemImage: "point.3.connected.trianglepath.dotted")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 } else {
-                    Text(store.project.rootDirectory.path())
+                    Text(store.project?.rootDirectory.path() ?? "")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -134,7 +137,7 @@ struct MenuBarContentView: View {
                     fillsWidth: false
                 )
             )
-            .disabled(store.isRefreshing)
+            .disabled(store.isRefreshing || store.project == nil)
             .keyboardShortcut("r", modifiers: .command)
             .help(Text("workspace.action.refresh"))
             .accessibilityLabel(Text("workspace.action.refresh"))
@@ -202,7 +205,7 @@ struct MenuBarContentView: View {
         let message = String(
             format: appLanguage.localized("workspace.summary.health-format"),
             locale: appLanguage.locale,
-            store.project.name,
+            store.project?.name ?? "",
             Int64(healthyCount),
             Int64(snapshot.services.count)
         )
@@ -318,7 +321,7 @@ struct MenuBarContentView: View {
                         .accessibilityIdentifier("menuBar.openPrimaryURL")
 
                         Button {
-                            openProjectFolder(store.project.rootDirectory)
+                            if let root = store.project?.rootDirectory { openProjectFolder(root) }
                         } label: {
                             Image(systemName: "folder")
                         }

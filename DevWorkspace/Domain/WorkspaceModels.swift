@@ -22,6 +22,7 @@ struct ProjectReference: Codable, Hashable, Identifiable, Sendable {
 }
 
 enum WorkspaceLifecycle: String, Codable, Equatable, Sendable {
+    case observed
     case stopped
     case starting
     case ready
@@ -34,6 +35,10 @@ struct GitSummary: Codable, Equatable, Sendable {
     let changedFileCount: Int
     let commitsAhead: Int
     let commitsBehind: Int
+    var upstream: String? = nil
+    var isDetached = false
+    var isUnborn = false
+    var hasDivergence = true
 }
 
 enum ServiceKind: String, Codable, Equatable, Sendable {
@@ -76,6 +81,7 @@ struct WorkspaceSnapshot: Codable, Equatable, Sendable {
     let observedAt: Date
     let freshness: SnapshotFreshness
     let origin: SnapshotOrigin
+    var readings: WorkspaceReadings? = nil
 
     func markedStale() -> Self {
         Self(
@@ -85,7 +91,8 @@ struct WorkspaceSnapshot: Codable, Equatable, Sendable {
             services: services,
             observedAt: observedAt,
             freshness: .stale,
-            origin: origin
+            origin: origin,
+            readings: readings
         )
     }
 }

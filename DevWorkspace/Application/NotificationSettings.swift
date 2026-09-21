@@ -217,7 +217,7 @@ enum WorkspaceNotificationPolicy {
             .actionable(.needsAttention)
         case let .ready(snapshot):
             switch snapshot.lifecycle {
-            case .stopped, .ready:
+            case .stopped, .ready, .observed:
                 .recovered
             case .starting:
                 .unchanged

@@ -53,7 +53,7 @@ struct WorkspaceRefreshPolicy: Equatable, Sendable {
             .transient
         case let .ready(snapshot):
             switch snapshot.lifecycle {
-            case .stopped, .ready:
+            case .stopped, .ready, .observed:
                 .stable
             case .starting:
                 .transient
@@ -120,7 +120,7 @@ final class WorkspaceRefreshController {
     }
 
     func start() {
-        guard !isRunning else {
+        guard !isRunning, store.project != nil else {
             return
         }
         isRunning = true

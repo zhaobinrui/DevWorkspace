@@ -2,6 +2,14 @@ import Foundation
 import Observation
 import SwiftUI
 
+extension LocalReadFailure: LocalizedError {
+    var errorDescription: String? { localized(in: .english) }
+
+    func localized(in language: AppLanguage) -> String {
+        language.localized("local.error.\(kind.rawValue)")
+    }
+}
+
 enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     case english = "en"
     case simplifiedChinese = "zh-Hans"
