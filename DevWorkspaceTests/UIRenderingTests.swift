@@ -5,6 +5,62 @@ import XCTest
 
 final class UIRenderingTests: XCTestCase {
     @MainActor
+    func test_captureWorkspace_whenExplicitlyRequested_shouldRenderKeyStates() async throws {
+        let marker = URL(fileURLWithPath: "/private/tmp/devworkspace-capture-dashboard")
+        guard let label = try? String(contentsOf: marker, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) else {
+            throw XCTSkip("Create the dashboard capture marker to render visual QA fixtures.")
+        }
+        let output = URL(fileURLWithPath: "/private/tmp/devworkspace-dashboard-qa/\(label)", isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let suite = "DevWorkspaceTests.Dashboard.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let language = AppLanguageSettings(userDefaults: defaults, defaultLanguage: .simplifiedChinese)
+        let project = ProjectReference(identity: try LocalProjectIdentityResolver().resolve(
+            rootDirectory: URL(fileURLWithPath: "/Projects/DevSpace"),
+            declaredMetadataID: UUID(uuidString: "00000000-0000-0000-0000-000000000100")!
+        ), name: "DevSpace")
+        let sibling = ProjectReference(identity: try LocalProjectIdentityResolver().resolve(
+            rootDirectory: URL(fileURLWithPath: "/Projects/sample-api"),
+            declaredMetadataID: UUID(uuidString: "00000000-0000-0000-0000-000000000101")!
+        ), name: "sample-api")
+        let date = Date(timeIntervalSince1970: 1_789_999_000)
+        let git = GitSummary(branch: "feature/workspace-overview", changedFileCount: 8, commitsAhead: 2, commitsBehind: 0, upstream: "origin/main")
+        let processes = [testProcess(pid: 31415, directory: "/Projects/DevSpace"), testProcess(pid: 27182, directory: "/Projects/DevSpace/server")]
+        for scenario in ["light", "dark", "empty", "error", "narrow", "onboarding", "unavailable", "non-git"] {
+            let failed = scenario == "error"
+            var readings = WorkspaceReadings(
+                git: SourceReading(value: git, checkedAt: date, attemptedAt: date.addingTimeInterval(60), failure: failed ? .init(kind: .permissionDenied) : nil),
+                ports: .success(scenario == "empty" ? [] : processes, at: date)
+            )
+            if scenario == "non-git" { readings.git = .success(nil, at: date) }
+            if scenario == "unavailable" {
+                readings.git = .failed(LocalReadFailure(kind: .permissionDenied), at: date)
+                readings.ports = .failed(LocalReadFailure(kind: .timedOut), at: date)
+            }
+            let snapshot = WorkspaceSnapshot(project: project, lifecycle: .observed, git: git, services: [], observedAt: date, freshness: .current, origin: .local, readings: readings)
+            let catalog = scenario == "onboarding" ? ProjectCatalog() : ProjectCatalog(projects: [project, sibling], selectedID: project.id)
+            let store = WorkspaceStore(provider: DashboardCaptureProvider(snapshot: snapshot), catalogRepository: DashboardCaptureCatalog(catalog: catalog))
+            await store.refresh()
+            let size = NSSize(width: scenario == "narrow" ? 760 : 1040, height: 760)
+            let scheme: ColorScheme = scenario == "dark" ? .dark : .light
+            let renderer = ImageRenderer(content: AppLanguageRootView(settings: language) {
+                WorkspaceDashboardView(store: store, refresh: {})
+                    .environment(\.workspaceStaticRendering, true)
+                    .environment(\.colorScheme, scheme)
+                    .frame(width: size.width, height: size.height)
+                    .background(scheme == .dark ? Color.black : Color.white)
+            })
+            renderer.scale = 2
+            // Render the SwiftUI hierarchy directly: cacheDisplay omits deferred GPU text layers on newer macOS.
+            let image = try XCTUnwrap(renderer.cgImage)
+            let bitmap = NSBitmapImageRep(cgImage: image)
+            let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            try data.write(to: output.appendingPathComponent("\(scenario).png"))
+        }
+    }
+
+    @MainActor
     func test_capturePrototypeScreens_whenExplicitlyRequested() async throws {
         let captureMarker = "/private/tmp/devworkspace-capture-ui"
         guard FileManager.default.fileExists(atPath: captureMarker) else {
@@ -407,4 +463,15 @@ private struct NormalizedTopCrop {
             height: cropHeight
         )
     }
+}
+
+private struct DashboardCaptureProvider: WorkspaceSnapshotProviding {
+    let snapshot: WorkspaceSnapshot
+    func snapshot(for project: ProjectReference) async throws -> WorkspaceSnapshot { snapshot }
+}
+
+private struct DashboardCaptureCatalog: ProjectCatalogPersisting {
+    let catalog: ProjectCatalog
+    func load() throws -> ProjectCatalog { catalog }
+    func save(_ catalog: ProjectCatalog) throws {}
 }

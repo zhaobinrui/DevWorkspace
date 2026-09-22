@@ -1,5 +1,9 @@
 import SwiftUI
 
+enum DevSpaceColor {
+    static let workspaceAccent = Color(red: 108 / 255, green: 124 / 255, blue: 238 / 255)
+}
+
 enum DevSpaceSpacing {
     static let xSmall: CGFloat = 4
     static let small: CGFloat = 8
@@ -24,10 +28,10 @@ enum DevSpaceLayout {
     static let menuBarWidth: CGFloat = 360
     static let settingsWidth: CGFloat = 680
     static let settingsHeight: CGFloat = 620
-    static let dashboardMinimumWidth: CGFloat = 720
+    static let dashboardMinimumWidth: CGFloat = 760
     static let dashboardMinimumHeight: CGFloat = 560
-    static let dashboardInitialWidth: CGFloat = 820
-    static let dashboardInitialHeight: CGFloat = 680
+    static let dashboardInitialWidth: CGFloat = 1040
+    static let dashboardInitialHeight: CGFloat = 760
 }
 
 enum DevSpaceTypography {

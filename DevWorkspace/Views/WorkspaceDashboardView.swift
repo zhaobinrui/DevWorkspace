@@ -8,66 +8,45 @@ struct WorkspaceDashboardView: View {
     @State private var confirmsRemoval = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DevSpaceSpacing.large) {
-            HStack {
-                Text("projects.title").font(.title2.bold())
-                Spacer()
-                Button(action: addProject) { Label("projects.add", systemImage: "plus") }
-                    .disabled(store.isAddingProject || store.catalogLoadBlocked)
-                    .accessibilityIdentifier("workspace.addProject")
-                Button {
-                    Task { await refresh() }
-                } label: { Label("workspace.action.refresh", systemImage: "arrow.clockwise") }
-                    .disabled(store.isRefreshing || store.project == nil)
-                    .keyboardShortcut("r", modifiers: .command)
-                    .accessibilityIdentifier("workspace.refresh")
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 196)
+                .frame(maxHeight: .infinity)
+                .background(.quaternary.opacity(0.35))
+            Divider()
+            VStack(alignment: .leading, spacing: 0) {
+                header.padding(24)
+                Divider().padding(.horizontal, 24)
+                WorkspaceScrollRegion {
+                    VStack(alignment: .leading, spacing: 20) {
+                        projectFeedback
+                        if store.project != nil {
+                            if store.currentSnapshot?.readings != nil {
+                                WorkspaceOverviewView(store: store)
+                            } else {
+                                WorkspaceSummaryView(state: store.state)
+                            }
+                        } else {
+                            ContentUnavailableView {
+                                Label("projects.empty", systemImage: "folder.badge.plus")
+                            } description: { Text("projects.empty-note") }
+                            actions: {
+                                Button("projects.add", action: addProject)
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(store.isAddingProject || store.catalogLoadBlocked)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 340)
+                        }
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+                .id(store.project?.id)
             }
-
-            if let issue = store.projectIssue {
-                Label(issue.localized(in: language), systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
-                if store.catalogLoadBlocked {
-                    Button("projects.retry-load") { store.reloadCatalog() }
-                }
-            }
-            if store.isAddingProject { ProgressView("projects.adding") }
-            if let candidate = store.pendingRelocation {
-                Text(candidate.rootDirectory.path).font(.caption).textSelection(.enabled)
-                HStack {
-                    Button("projects.confirm-move") { store.confirmRelocation() }
-                    Button("projects.cancel") { store.cancelRelocation() }
-                }
-            }
-            if let project = store.project {
-                HStack {
-                    Picker("projects.selected", selection: Binding(
-                        get: { store.project?.id.rawValue ?? "" },
-                        set: { if let id = ProjectIdentifier(rawValue: $0) { store.selectProject(id) } }
-                    )) {
-                        ForEach(store.catalog.projects) { project in Text(project.name).tag(project.id.rawValue) }
-                    }.accessibilityIdentifier("workspace.projectPicker")
-                    Button("projects.remove", role: .destructive) { confirmsRemoval = true }
-                }
-                Text(project.rootDirectory.path).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: DevSpaceSpacing.large) {
-                        if store.currentSnapshot?.readings != nil {
-                            let status = WorkspaceStatusPresentation(state: store.state, language: language)
-                            DevSpaceStatusBadge(status: status.semanticStatus, title: status.title)
-                            LocalWorkspaceReadingsView(store: store)
-                        } else { WorkspaceSummaryView(state: store.state) }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else {
-                ContentUnavailableView {
-                    Label("projects.empty", systemImage: "folder.badge.plus")
-                } description: { Text("projects.empty-note") }
-                actions: {
-                    Button("projects.add", action: addProject).disabled(store.isAddingProject || store.catalogLoadBlocked)
-                }
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(DevSpaceSpacing.xLarge)
+        .background(.background)
+        .accentColor(DevSpaceColor.workspaceAccent)
         .frame(minWidth: DevSpaceLayout.dashboardMinimumWidth, minHeight: DevSpaceLayout.dashboardMinimumHeight)
         .confirmationDialog("projects.remove-confirm", isPresented: $confirmsRemoval) {
             Button("projects.remove", role: .destructive) { store.removeSelectedProject() }
@@ -76,5 +55,187 @@ struct WorkspaceDashboardView: View {
         .task(id: store.project) {
             if store.shouldLoad { await refresh() }
         }
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            HStack(spacing: 10) {
+                Image(systemName: "square.stack.3d.up.fill")
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 36, height: 36)
+                    .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("DevWorkspace").font(.system(size: 13, weight: .semibold))
+                    Text("dashboard.local-workspace").font(.caption).foregroundStyle(.secondary)
+                }
+            }.padding(.horizontal, 16).padding(.top, 24)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("projects.title").font(.system(size: 11, weight: .semibold))
+                    Spacer()
+                    Text(store.catalog.projects.count, format: .number).font(.caption.monospacedDigit())
+                }.foregroundStyle(.secondary).padding(.horizontal, 20)
+                WorkspaceScrollRegion {
+                    VStack(spacing: 5) {
+                        ForEach(store.catalog.projects) { project in
+                            projectRow(project)
+                        }
+                    }.padding(.horizontal, 10)
+                }
+            }
+            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 16) {
+                Button(action: addProject) {
+                    Label("projects.add", systemImage: "plus")
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 9).padding(.horizontal, 10)
+                        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(store.isAddingProject || store.catalogLoadBlocked)
+                .accessibilityIdentifier("workspace.addProject")
+                Label("dashboard.local-only", systemImage: "lock.shield")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+            }.padding(16)
+        }
+    }
+
+    private func projectRow(_ project: ProjectReference) -> some View {
+        let selected = store.project?.id == project.id
+        return Button { store.selectProject(project.id) } label: {
+            HStack(spacing: 10) {
+                Image(systemName: selected ? "folder.fill" : "folder")
+                    .font(.system(size: 15))
+                    .foregroundStyle(selected ? Color.accentColor : .secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(project.name).font(.system(size: 12, weight: selected ? .semibold : .medium)).lineLimit(1)
+                    Text(project.rootDirectory.deletingLastPathComponent().lastPathComponent)
+                        .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if selected {
+                    RoundedRectangle(cornerRadius: 2).fill(Color.accentColor).frame(width: 3, height: 20)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selected ? Color.accentColor.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 9))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(store.catalogLoadBlocked)
+        .help(project.rootDirectory.path)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("workspace.project.\(project.id.rawValue)")
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("dashboard.overview").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                Spacer()
+                if store.project != nil {
+                    Button { Task { await refresh() } } label: {
+                        Label("workspace.action.refresh", systemImage: "arrow.clockwise")
+                    }
+                    .controlSize(.regular)
+                    .disabled(store.isRefreshing)
+                    .keyboardShortcut("r", modifiers: .command)
+                    .accessibilityIdentifier("workspace.refresh")
+                    WorkspaceOverflowMenu(title: "dashboard.manage") {
+                        Button("projects.remove", role: .destructive) { confirmsRemoval = true }
+                            .disabled(store.catalogLoadBlocked)
+                    }
+                }
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(store.project?.name ?? "DevWorkspace")
+                    .font(.system(size: 26, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 0)
+                if store.project != nil {
+                    let status = WorkspaceStatusPresentation(state: store.state, language: language)
+                    Label(status.title, systemImage: status.semanticStatus.token.systemImage)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(status.semanticStatus.token.color)
+                        .fixedSize()
+                }
+            }
+            if let project = store.project {
+                Label(project.rootDirectory.path, systemImage: "folder")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle).help(project.rootDirectory.path)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    @ViewBuilder private var projectFeedback: some View {
+        if let issue = store.projectIssue {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(issue.localized(in: language), systemImage: "exclamationmark.triangle")
+                    .font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                if store.catalogLoadBlocked {
+                    Button("projects.retry-load") { store.reloadCatalog() }
+                }
+                if let candidate = store.pendingRelocation {
+                    Text(candidate.rootDirectory.path).font(.caption).textSelection(.enabled)
+                    HStack {
+                        Button("projects.confirm-move") { store.confirmRelocation() }
+                        Button("projects.cancel") { store.cancelRelocation() }
+                    }
+                }
+            }
+            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        }
+        if store.isAddingProject { ProgressView("projects.adding") }
+    }
+}
+
+// NSScrollView-backed content is absent from ImageRenderer output. Visual fixtures use the same
+// layout without native scrolling; runtime always keeps scrolling and keyboard navigation enabled.
+private struct WorkspaceStaticRenderingKey: EnvironmentKey {
+    static let defaultValue = false
+}
+extension EnvironmentValues {
+    var workspaceStaticRendering: Bool {
+        get { self[WorkspaceStaticRenderingKey.self] }
+        set { self[WorkspaceStaticRenderingKey.self] = newValue }
+    }
+}
+struct WorkspaceScrollRegion<Content: View>: View {
+    @Environment(\.workspaceStaticRendering) private var staticRendering
+    @ViewBuilder let content: Content
+    var body: some View {
+        if staticRendering {
+            GeometryReader { geometry in
+                content.frame(width: geometry.size.width, alignment: .topLeading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }.clipped()
+        } else {
+            ScrollView { content }
+        }
+    }
+}
+
+struct WorkspaceOverflowMenu<Content: View>: View {
+    @Environment(\.workspaceStaticRendering) private var staticRendering
+    let title: LocalizedStringKey
+    @ViewBuilder let content: Content
+    private var label: some View { Image(systemName: "ellipsis").frame(width: 24, height: 24) }
+    var body: some View {
+        Group {
+            if staticRendering {
+                // ImageRenderer cannot draw NSPopUpButton. Capture its label only, not a simulated open menu.
+                label
+            } else {
+                Menu { content } label: { label }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            }
+        }.accessibilityLabel(Text(title)).help(Text(title))
     }
 }
