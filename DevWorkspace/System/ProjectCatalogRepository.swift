@@ -31,6 +31,13 @@ struct FileProjectCatalogRepository: ProjectCatalogPersisting {
                   catalog.bindings.allSatisfy({ binding in binding.projectID == nil || catalog.projects.contains(where: { $0.id == binding.projectID }) }) else {
                 throw LocalReadFailure(kind: .corruptStorage)
             }
+            guard Set(catalog.preferences.map(\.projectID)).count == catalog.preferences.count,
+                  catalog.preferences.allSatisfy({ preference in
+                      catalog.projects.contains { $0.id == preference.projectID }
+                      && (preference.editor == nil || preference.editor?.applicationURL.isFileURL == true)
+                      && Set(preference.links.map(\.id)).count == preference.links.count
+                      && preference.links.allSatisfy { ProjectURLPolicy.validated($0.url.absoluteString) != nil }
+                  }) else { throw LocalReadFailure(kind: .corruptStorage) }
             return catalog
         } catch let failure as LocalReadFailure { throw failure }
         catch { throw LocalReadFailure(kind: .corruptStorage) }

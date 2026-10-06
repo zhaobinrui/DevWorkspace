@@ -39,6 +39,9 @@ struct MenuBarContentView: View {
 
             Divider()
                 .padding(.top, DevSpaceSpacing.medium)
+            if store.project != nil && snapshot?.origin != .preview {
+                ProjectActionsView(store: store, compact: true).padding(.top, 10)
+            }
             footerActions
         }
         .padding(DevSpaceSpacing.medium)
@@ -52,7 +55,7 @@ struct MenuBarContentView: View {
         )
         .task {
             if store.shouldLoad {
-                await refresh()
+                await store.refresh(forceProcessRefresh: false)
             }
         }
     }

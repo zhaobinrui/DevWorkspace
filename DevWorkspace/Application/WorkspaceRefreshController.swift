@@ -239,7 +239,7 @@ final class WorkspaceRefreshController {
             signpostID: signpostID
         )
 
-        await store.refresh()
+        await store.refresh(forceProcessRefresh: trigger == .userInitiated || trigger == .scheduled)
 
         let elapsed = startedAt.duration(to: clock.now)
         let duration = elapsed.timeInterval

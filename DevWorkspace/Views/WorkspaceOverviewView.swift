@@ -4,13 +4,23 @@ import SwiftUI
 struct WorkspaceOverviewView: View {
     @Environment(\.appLanguage) private var language
     @Bindable var store: WorkspaceStore
+    var showsUserProcesses = false
 
     var body: some View {
-        if let readings = store.currentSnapshot?.readings {
+        if showsUserProcesses {
+            if let reading = store.userProcesses {
+                portsSection(reading)
+            } else {
+                ContentUnavailableView("processes.not-loaded", systemImage: "network", description: Text("processes.scope"))
+            }
+        } else if let readings = store.displayReadings {
             VStack(alignment: .leading, spacing: 20) {
                 gitSection(readings.git)
                 portsSection(readings.ports)
             }
+        } else if let reading = store.userProcesses {
+            // Keep cached project attribution visible while its independent Git request is loading.
+            portsSection(reading)
         }
     }
 
@@ -58,14 +68,14 @@ struct WorkspaceOverviewView: View {
 
     private func portsSection(_ reading: SourceReading<[ListeningProcess]>) -> some View {
         WorkspacePanel {
-            sectionHeader("ports.title", symbol: "network", reading: reading)
+            sectionHeader(showsUserProcesses ? "processes.title" : "ports.title", symbol: "network", reading: reading)
             Text("ports.scope").font(.system(size: 10)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             sourceFailure(reading)
             if let all = reading.value {
-                let processes = store.projectProcesses
+                let processes = showsUserProcesses ? all : store.projectProcesses
                 if processes.isEmpty {
-                    quietState(reading.failure == nil ? "ports.project-empty" : "ports.last-empty", symbol: "network", detail: "dashboard.ports-empty-note")
+                    quietState(reading.failure == nil ? (showsUserProcesses ? "processes.empty" : "ports.project-empty") : "ports.last-empty", symbol: "network", detail: showsUserProcesses ? "processes.scope" : "dashboard.ports-empty-note")
                 } else {
                     HStack {
                         Text("dashboard.processes").font(.system(size: 10, weight: .medium))
@@ -85,15 +95,7 @@ struct WorkspaceOverviewView: View {
                     Label("ports.unresolved-note", systemImage: "exclamationmark.triangle")
                         .font(.caption).foregroundStyle(.orange)
                 }
-                let others = all.filter { store.attribution(for: $0).projectID != store.project?.id }
-                if !others.isEmpty {
-                    Divider()
-                    DisclosureGroup(String(format: language.localized("ports.others-format"), others.count)) {
-                        VStack(spacing: 18) {
-                            ForEach(others) { process in processRow(process, canBind: reading.failure == nil) }
-                        }.padding(.top, 14)
-                    }.font(.system(size: 11)).foregroundStyle(.secondary)
-                }
+
             }
         }
     }
@@ -112,12 +114,15 @@ struct WorkspaceOverviewView: View {
                 }
                 Spacer(minLength: 8)
                 WorkspaceOverflowMenu(title: "ports.attribution") {
-                    if let project = store.project {
-                        Button("ports.bind-current") { Task { await store.bind(process, to: project.id) } }
+                    ForEach(store.catalog.projects) { project in
+                        Button(project.name) { Task { await store.bind(process, to: project.id) } }
                     }
                     Button("ports.exclude") { Task { await store.bind(process, to: nil) } }
                     Button("ports.automatic") { store.resetBinding(process) }
                 }.disabled(!canBind)
+            }
+            if showsUserProcesses {
+                Text(attributionText(process)).font(.caption).foregroundStyle(.secondary)
             }
             // Adaptive columns keep every endpoint visible without one long, truncated socket summary.
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), alignment: .leading)], alignment: .leading, spacing: 6) {

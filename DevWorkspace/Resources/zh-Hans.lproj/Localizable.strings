@@ -198,3 +198,57 @@
 "status.canonical.failed" = "失败";
 "status.canonical.offline" = "离线";
 "status.accessibility-format" = "%@: %@";
+
+/* Project actions and configuration discovery */
+"actions.choose-editor" = "选择编辑器并打开…";
+"actions.change-editor" = "更换项目编辑器…";
+"actions.more" = "更多快捷操作";
+"actions.copy-path" = "复制项目路径";
+"actions.copy-branch" = "复制分支名";
+"actions.copy-url" = "复制地址";
+"actions.copied" = "已复制";
+"actions.links" = "项目地址";
+"actions.add-link" = "添加地址";
+"actions.no-links" = "尚未保存地址。可手动添加，或确认下方识别结果。";
+"actions.open" = "打开";
+"actions.edit" = "编辑";
+"actions.remove" = "移除";
+"actions.unverified" = "地址未进行联网检测；打开将交给默认浏览器。";
+"actions.discovered" = "项目配置";
+"actions.scan" = "重新识别";
+"actions.scan-scope" = "支持根目录 package.json、根目录及 src/main/resources 下的 application 配置。仅提取静态值，不解析环境变量、Profile 或动态脚本。";
+"actions.no-config" = "支持的配置中未发现地址或 Docker 文件。可手动添加地址。";
+"actions.stale" = "配置读取不完整，部分信息可能来自上次成功识别。";
+"actions.review" = "确认并保存…";
+"actions.reveal" = "在 Finder 中查看";
+"actions.docker-note" = "已识别配置文件。本轮仅提供查看入口；容器启动尚未实现。";
+"actions.review-title" = "确认项目地址";
+"actions.link-name" = "名称，例如 API 文档";
+"actions.link-url" = "http://localhost:8080";
+"actions.link-note" = "请核对协议、端口和路径。配置值可能被运行参数覆盖。仅保存不含账号密码、查询参数或片段的 HTTP(S) 地址；请勿填写密钥。";
+"actions.save" = "保存地址";
+"actions.error.missingApplication" = "找不到已选择的应用，请更换项目编辑器。";
+"actions.error.invalidURL" = "地址无效：请填写 HTTP(S) 地址，不包含账号密码、查询参数或片段。";
+"actions.error.openFailed" = "系统未能打开目标，请检查应用和路径后重试。";
+"actions.error.clipboardFailed" = "复制失败，请重试。";
+"actions.terminal" = "Terminal";
+"actions.detected-hints" = "识别结果";
+"actions.last-success" = "上次完整读取";
+"actions.last-attempt" = "本次尝试";
+
+/* Common applications and shared process observation */
+"apps.open-project" = "打开当前项目";
+"apps.choose-default" = "选择项目默认编辑器";
+"apps.choose" = "选择…";
+"apps.common" = "常用应用";
+"apps.not-installed" = "未检测到安装";
+"apps.default" = "此项目默认";
+"apps.use-default" = "设为默认并打开";
+"apps.browse-files" = "浏览项目文件";
+"apps.open-terminal" = "进入项目目录";
+"apps.other-editor" = "选择其他编辑器…";
+"apps.refresh" = "重新检测应用";
+"processes.title" = "当前用户进程";
+"processes.scope" = "所有项目共用的 TCP 监听与 UDP 绑定进程；按项目标明归属。";
+"processes.empty" = "当前没有监听端口的用户进程";
+"processes.not-loaded" = "尚未读取用户进程";

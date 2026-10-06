@@ -27,12 +27,16 @@ final class UIRenderingTests: XCTestCase {
         let date = Date(timeIntervalSince1970: 1_789_999_000)
         let git = GitSummary(branch: "feature/workspace-overview", changedFileCount: 8, commitsAhead: 2, commitsBehind: 0, upstream: "origin/main")
         let processes = [testProcess(pid: 31415, directory: "/Projects/DevSpace"), testProcess(pid: 27182, directory: "/Projects/DevSpace/server")]
-        for scenario in ["light", "dark", "empty", "error", "narrow", "onboarding", "unavailable", "non-git"] {
-            let failed = scenario == "error"
+        for scenario in ["light", "dark", "empty", "error", "narrow", "onboarding", "unavailable", "non-git", "processes", "processes-error", "processes-empty"] {
+            let failed = scenario == "error" || scenario == "processes-error"
             var readings = WorkspaceReadings(
                 git: SourceReading(value: git, checkedAt: date, attemptedAt: date.addingTimeInterval(60), failure: failed ? .init(kind: .permissionDenied) : nil),
                 ports: .success(scenario == "empty" ? [] : processes, at: date)
             )
+            if scenario.hasPrefix("processes") {
+                readings.ports = SourceReading(value: scenario == "processes-empty" ? [] : [processes[0], testProcess(pid: 27182, directory: "/Projects/sample-api"), testProcess(pid: 31000, directory: "/Projects/unregistered")],
+                                              checkedAt: date, attemptedAt: date.addingTimeInterval(60), failure: failed ? .init(kind: .permissionDenied) : nil)
+            }
             if scenario == "non-git" { readings.git = .success(nil, at: date) }
             if scenario == "unavailable" {
                 readings.git = .failed(LocalReadFailure(kind: .permissionDenied), at: date)
@@ -45,18 +49,59 @@ final class UIRenderingTests: XCTestCase {
             let size = NSSize(width: scenario == "narrow" ? 760 : 1040, height: 760)
             let scheme: ColorScheme = scenario == "dark" ? .dark : .light
             let renderer = ImageRenderer(content: AppLanguageRootView(settings: language) {
-                WorkspaceDashboardView(store: store, refresh: {})
+                WorkspaceDashboardView(store: store, refresh: {}, showUserProcesses: scenario.hasPrefix("processes"))
+                    .defaultAppStorage(defaults)
                     .environment(\.workspaceStaticRendering, true)
                     .environment(\.colorScheme, scheme)
                     .frame(width: size.width, height: size.height)
                     .background(scheme == .dark ? Color.black : Color.white)
             })
             renderer.scale = 2
+            // macOS 26+ can automatically export PQ PNGs after seeing HDR application icons.
+            if #available(macOS 26.0, *) { renderer.allowedDynamicRange = .standard }
             // Render the SwiftUI hierarchy directly: cacheDisplay omits deferred GPU text layers on newer macOS.
             let image = try XCTUnwrap(renderer.cgImage)
-            let bitmap = NSBitmapImageRep(cgImage: image)
+            // Normalize the PNG profile as well: standard luminance alone may still encode PQ.
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(cgImage: image).converting(to: .sRGB, renderingIntent: .perceptual))
             let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
             try data.write(to: output.appendingPathComponent("\(scenario).png"))
+        }
+    }
+
+    @MainActor
+    func test_captureProjectActions_whenExplicitlyRequested_shouldRenderSavedAndDiscoveredLinks() async throws {
+        guard FileManager.default.fileExists(atPath: "/private/tmp/devworkspace-capture-dashboard") else {
+            throw XCTSkip("Create the dashboard capture marker to render action fixtures.")
+        }
+        let project = try testProject(URL(fileURLWithPath: "/Projects/sample-api"))
+        let link = ProjectLink(name: "API 文档", url: URL(string: "http://localhost:9090/api/docs")!)
+        let preferences = ProjectPreferences(projectID: project.id,
+            editor: ProjectEditor(bundleIdentifier: "com.jetbrains.intellij", applicationURL: URL(fileURLWithPath: "/Applications/IntelliJ IDEA.app"), name: "IntelliJ IDEA"), links: [link])
+        let catalog = ProjectCatalog(projects: [project], selectedID: project.id, preferences: [preferences])
+        let store = WorkspaceStore(provider: PreviewWorkspaceSnapshotProvider(), catalogRepository: DashboardCaptureCatalog(catalog: catalog), configurationReader: ActionCaptureConfiguration())
+        await store.discoverConfiguration()
+        let output = URL(fileURLWithPath: "/private/tmp/devworkspace-dashboard-qa/actions")
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let defaults = UserDefaults(suiteName: "DevWorkspaceTests.Actions.Capture")!
+        defer { defaults.removePersistentDomain(forName: "DevWorkspaceTests.Actions.Capture") }
+        let language = AppLanguageSettings(userDefaults: defaults, defaultLanguage: .simplifiedChinese)
+        for variant in ["light", "dark", "collapsed"] {
+            let scheme: ColorScheme = variant == "dark" ? .dark : .light
+            defaults.set(variant != "collapsed", forKey: "workspace.commonApplicationsExpanded")
+            let renderer = ImageRenderer(content: AppLanguageRootView(settings: language) {
+                ProjectActionsView(store: store, configurationExpanded: variant != "collapsed")
+                    .defaultAppStorage(defaults)
+                    .environment(\.workspaceStaticRendering, true)
+                    .environment(\.colorScheme, scheme)
+                    .padding(24).frame(width: 790)
+                    .background(scheme == .dark ? Color.black : Color.white)
+            })
+            renderer.scale = 2
+            // macOS 26+ can automatically export PQ PNGs after seeing HDR application icons.
+            if #available(macOS 26.0, *) { renderer.allowedDynamicRange = .standard }
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(cgImage: try XCTUnwrap(renderer.cgImage)).converting(to: .sRGB, renderingIntent: .perceptual))
+            try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                .write(to: output.appendingPathComponent(variant + ".png"))
         }
     }
 
@@ -474,4 +519,11 @@ private struct DashboardCaptureCatalog: ProjectCatalogPersisting {
     let catalog: ProjectCatalog
     func load() throws -> ProjectCatalog { catalog }
     func save(_ catalog: ProjectCatalog) throws {}
+}
+
+private struct ActionCaptureConfiguration: ProjectConfigurationReading {
+    func read(root: URL) async throws -> ProjectDiscovery {
+        ProjectDiscovery(links: [DiscoveredProjectLink(name: "Service", url: URL(string: "http://localhost:9090/api")!, source: "src/main/resources/application.yml · server.port"),
+            DiscoveredProjectLink(name: "API docs", url: URL(string: "http://localhost:9090/api/docs")!, source: "src/main/resources/application.yml · springdoc.swagger-ui.path")], dockerFiles: ["Dockerfile", "compose.yaml"])
+    }
 }

@@ -145,4 +145,23 @@ struct ProjectCatalog: Codable, Equatable, Sendable {
     var projects: [ProjectReference] = []
     var selectedID: ProjectIdentifier? = nil
     var bindings: [ProcessProjectBinding] = []
+    var preferences: [ProjectPreferences] = []
+
+    enum CodingKeys: String, CodingKey { case version, projects, selectedID, bindings, preferences }
+
+    init(version: Int = 1, projects: [ProjectReference] = [], selectedID: ProjectIdentifier? = nil,
+         bindings: [ProcessProjectBinding] = [], preferences: [ProjectPreferences] = []) {
+        self.version = version; self.projects = projects; self.selectedID = selectedID
+        self.bindings = bindings; self.preferences = preferences
+    }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        version = try values.decode(Int.self, forKey: .version)
+        projects = try values.decode([ProjectReference].self, forKey: .projects)
+        selectedID = try values.decodeIfPresent(ProjectIdentifier.self, forKey: .selectedID)
+        bindings = try values.decode([ProcessProjectBinding].self, forKey: .bindings)
+        // Additive metadata keeps existing installations readable without rewriting their projects.
+        preferences = try values.decodeIfPresent([ProjectPreferences].self, forKey: .preferences) ?? []
+    }
 }

@@ -198,3 +198,57 @@
 "status.canonical.failed" = "Failed";
 "status.canonical.offline" = "Offline";
 "status.accessibility-format" = "%@: %@";
+
+/* Project actions and configuration discovery */
+"actions.choose-editor" = "Choose Editor…";
+"actions.change-editor" = "Change Project Editor…";
+"actions.more" = "More Actions";
+"actions.copy-path" = "Copy Project Path";
+"actions.copy-branch" = "Copy Branch Name";
+"actions.copy-url" = "Copy Address";
+"actions.copied" = "Copied";
+"actions.links" = "Project Links";
+"actions.add-link" = "Add Link";
+"actions.no-links" = "No saved links. Add one or review a detected address below.";
+"actions.open" = "Open";
+"actions.edit" = "Edit";
+"actions.remove" = "Remove";
+"actions.unverified" = "Addresses are not network-tested. Open uses your default browser.";
+"actions.discovered" = "Project Configuration";
+"actions.scan" = "Scan Again";
+"actions.scan-scope" = "Reads root package.json and application configuration at the root or in src/main/resources. Static values only; no environment, profile or script evaluation.";
+"actions.no-config" = "No links or Docker files found in supported configuration. You can add links manually.";
+"actions.stale" = "Configuration read is incomplete. Some entries may be from the previous successful scan.";
+"actions.review" = "Review & Save…";
+"actions.reveal" = "Show in Finder";
+"actions.docker-note" = "Configuration detected. File reveal is available; container startup is not implemented yet.";
+"actions.review-title" = "Review Project Link";
+"actions.link-name" = "Name, e.g. API Docs";
+"actions.link-url" = "http://localhost:8080";
+"actions.link-note" = "Check the scheme, port and path. Runtime options may override configuration. Only HTTP(S) links without credentials, queries or fragments are saved. Do not include secrets.";
+"actions.save" = "Save Link";
+"actions.error.missingApplication" = "The selected app is unavailable. Choose another editor.";
+"actions.error.invalidURL" = "Invalid address. Use HTTP(S) without credentials, queries or fragments.";
+"actions.error.openFailed" = "The system could not open the target. Check the app and path, then retry.";
+"actions.error.clipboardFailed" = "Copy failed. Please retry.";
+"actions.terminal" = "Terminal";
+"actions.detected-hints" = "Detected Items";
+"actions.last-success" = "Last Complete Scan";
+"actions.last-attempt" = "Last Attempt";
+
+/* Common applications and shared process observation */
+"apps.open-project" = "Open This Project";
+"apps.choose-default" = "Choose a Default Editor";
+"apps.choose" = "Choose…";
+"apps.common" = "Common Applications";
+"apps.not-installed" = "Not Found";
+"apps.default" = "Project Default";
+"apps.use-default" = "Set Default & Open";
+"apps.browse-files" = "Browse Project Files";
+"apps.open-terminal" = "Open Project Directory";
+"apps.other-editor" = "Choose Another Editor…";
+"apps.refresh" = "Refresh Applications";
+"processes.title" = "User Processes";
+"processes.scope" = "Shared TCP listeners and UDP bindings across all projects, with project attribution.";
+"processes.empty" = "No User Processes with Listening Ports";
+"processes.not-loaded" = "User Processes Not Loaded";

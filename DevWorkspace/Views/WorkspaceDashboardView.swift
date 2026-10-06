@@ -6,6 +6,15 @@ struct WorkspaceDashboardView: View {
     let refresh: @MainActor () async -> Void
     var addProject: @MainActor () -> Void = {}
     @State private var confirmsRemoval = false
+    @State private var showsUserProcesses = false
+
+    init(store: WorkspaceStore, refresh: @escaping @MainActor () async -> Void,
+         addProject: @escaping @MainActor () -> Void = {}, showUserProcesses: Bool = false) {
+        self.store = store
+        self.refresh = refresh
+        self.addProject = addProject
+        _showsUserProcesses = State(initialValue: showUserProcesses)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -20,8 +29,11 @@ struct WorkspaceDashboardView: View {
                 WorkspaceScrollRegion {
                     VStack(alignment: .leading, spacing: 20) {
                         projectFeedback
-                        if store.project != nil {
-                            if store.currentSnapshot?.readings != nil {
+                        if showsUserProcesses {
+                            WorkspaceOverviewView(store: store, showsUserProcesses: true)
+                        } else if store.project != nil {
+                            ProjectActionsView(store: store)
+                            if store.currentSnapshot?.readings != nil || store.userProcesses != nil {
                                 WorkspaceOverviewView(store: store)
                             } else {
                                 WorkspaceSummaryView(state: store.state)
@@ -41,7 +53,7 @@ struct WorkspaceDashboardView: View {
                     .padding(24)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .id(store.project?.id)
+                .id(showsUserProcesses ? "user-processes" : store.project?.id.rawValue)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -53,7 +65,10 @@ struct WorkspaceDashboardView: View {
             Button("projects.cancel", role: .cancel) {}
         } message: { Text("projects.remove-note") }
         .task(id: store.project) {
-            if store.shouldLoad { await refresh() }
+            if store.shouldLoad { await store.refresh(forceProcessRefresh: false) }
+        }
+        .task(id: showsUserProcesses) {
+            if showsUserProcesses { await store.refreshUserProcesses(force: false) }
         }
     }
 
@@ -70,6 +85,23 @@ struct WorkspaceDashboardView: View {
                     Text("dashboard.local-workspace").font(.caption).foregroundStyle(.secondary)
                 }
             }.padding(.horizontal, 16).padding(.top, 24)
+
+            Button { showsUserProcesses = true } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "network")
+                    Text("processes.title").font(.system(size: 12, weight: .medium))
+                    Spacer(minLength: 0)
+                    if let count = store.userProcesses?.value?.count {
+                        Text(count, format: .number).font(.caption.monospacedDigit())
+                    }
+                }
+                .padding(10)
+                .background(showsUserProcesses ? Color.accentColor.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 9))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).padding(.horizontal, 10)
+            .accessibilityIdentifier("workspace.userProcesses")
+            .accessibilityAddTraits(showsUserProcesses ? .isSelected : [])
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -105,8 +137,8 @@ struct WorkspaceDashboardView: View {
     }
 
     private func projectRow(_ project: ProjectReference) -> some View {
-        let selected = store.project?.id == project.id
-        return Button { store.selectProject(project.id) } label: {
+        let selected = !showsUserProcesses && store.project?.id == project.id
+        return Button { showsUserProcesses = false; store.selectProject(project.id) } label: {
             HStack(spacing: 10) {
                 Image(systemName: selected ? "folder.fill" : "folder")
                     .font(.system(size: 15))
@@ -138,25 +170,30 @@ struct WorkspaceDashboardView: View {
             HStack {
                 Text("dashboard.overview").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
                 Spacer()
-                if store.project != nil {
-                    Button { Task { await refresh() } } label: {
+                if store.project != nil || showsUserProcesses {
+                    Button { Task {
+                        if showsUserProcesses { await store.refreshUserProcesses() }
+                        else { await refresh() }
+                    } } label: {
                         Label("workspace.action.refresh", systemImage: "arrow.clockwise")
                     }
                     .controlSize(.regular)
-                    .disabled(store.isRefreshing)
+                    .disabled(showsUserProcesses ? store.isRefreshingUserProcesses : store.isRefreshing)
                     .keyboardShortcut("r", modifiers: .command)
                     .accessibilityIdentifier("workspace.refresh")
-                    WorkspaceOverflowMenu(title: "dashboard.manage") {
-                        Button("projects.remove", role: .destructive) { confirmsRemoval = true }
-                            .disabled(store.catalogLoadBlocked)
+                    if !showsUserProcesses {
+                        WorkspaceOverflowMenu(title: "dashboard.manage") {
+                            Button("projects.remove", role: .destructive) { confirmsRemoval = true }
+                                .disabled(store.catalogLoadBlocked)
+                        }
                     }
                 }
             }
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(store.project?.name ?? "DevWorkspace")
+                Text(showsUserProcesses ? language.localized("processes.title") : store.project?.name ?? "DevWorkspace")
                     .font(.system(size: 26, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 0)
-                if store.project != nil {
+                if store.project != nil && !showsUserProcesses {
                     let status = WorkspaceStatusPresentation(state: store.state, language: language)
                     Label(status.title, systemImage: status.semanticStatus.token.systemImage)
                         .font(.system(size: 11, weight: .medium))
@@ -164,7 +201,9 @@ struct WorkspaceDashboardView: View {
                         .fixedSize()
                 }
             }
-            if let project = store.project {
+            if showsUserProcesses {
+                Text("processes.scope").font(.system(size: 11)).foregroundStyle(.secondary)
+            } else if let project = store.project {
                 Label(project.rootDirectory.path, systemImage: "folder")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle).help(project.rootDirectory.path)

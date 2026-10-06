@@ -6,7 +6,7 @@ struct LocalWorkspaceReadingsView: View {
     var compact = false
 
     var body: some View {
-        if let readings = store.currentSnapshot?.readings {
+        if let readings = store.displayReadings {
             VStack(alignment: .leading, spacing: DevSpaceSpacing.large) {
                 GroupBox("Git") {
                     VStack(alignment: .leading, spacing: DevSpaceSpacing.small) {
@@ -53,16 +53,7 @@ struct LocalWorkspaceReadingsView: View {
                                 Label("ports.unresolved-note", systemImage: "exclamationmark.triangle")
                                     .font(.caption).foregroundStyle(.orange)
                             }
-                            if !compact {
-                                let others = (readings.ports.value ?? []).filter { store.attribution(for: $0).projectID != store.project?.id }
-                                if !others.isEmpty {
-                                    DisclosureGroup(String(format: language.localized("ports.others-format"), others.count)) {
-                                        VStack(alignment: .leading, spacing: DevSpaceSpacing.medium) {
-                                            ForEach(others) { process in processRow(process, canBind: readings.ports.failure == nil) }
-                                        }.padding(.top, DevSpaceSpacing.small)
-                                    }
-                                }
-                            }
+
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }
