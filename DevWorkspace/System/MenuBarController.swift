@@ -22,6 +22,8 @@ final class MenuBarController: NSObject {
     private let refreshController: WorkspaceRefreshController
     private let statusItem: NSStatusItem
     private let popover: NSPopover
+    private var anchorMonitor: Task<Void, Never>?
+    private var hasSeenVisibleAnchor = false
 
     // 关闭窗口后继续持有控制器，既避免 AppKit 释放窗口，也保留同一 SwiftUI 状态树供再次打开。
     private var workspaceWindowController: NSWindowController?
@@ -66,13 +68,8 @@ final class MenuBarController: NSObject {
 
         button.target = self
         button.action = #selector(statusItemPressed(_:))
-        if #available(macOS 27.0, *) {
-            // 系统的展开会话会在隐藏菜单栏收起时结束；旧版仍使用按钮点击切换。
-            statusItem.expandedInterfaceDelegate = self
-            button.sendAction(on: [.rightMouseUp])
-        } else {
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        }
+        // 保留左键动作，第二次点击由同一个按钮明确关闭弹窗；右键打开管理菜单。
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.imagePosition = .imageLeading
     }
 
@@ -82,7 +79,7 @@ final class MenuBarController: NSObject {
                 store: store,
                 appearanceSettings: appearanceSettings,
                 openWorkspace: { [weak self] in
-                    self?.popover.performClose(nil)
+                    self?.popover.close()
                     self?.showWorkspace()
                 },
                 openProjectFolder: { [weak self] rootDirectory in
@@ -153,7 +150,7 @@ final class MenuBarController: NSObject {
 
     private func updateMenuBarVisibility(isVisible: Bool) {
         if !isVisible {
-            popover.performClose(nil)
+            popover.close()
         }
         statusItem.isVisible = isVisible
     }
@@ -201,7 +198,7 @@ final class MenuBarController: NSObject {
 
     private func togglePopover(relativeTo button: NSStatusBarButton) {
         if popover.isShown {
-            popover.performClose(nil)
+            popover.close()
         } else {
             showPopover(relativeTo: button)
         }
@@ -211,8 +208,40 @@ final class MenuBarController: NSObject {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
+    private func statusItemAnchorIsVisible() -> Bool {
+        guard let button = statusItem.button,
+              let window = button.window,
+              window.isVisible,
+              window.occlusionState.contains(.visible),
+              !button.isHiddenOrHasHiddenAncestor,
+              !button.visibleRect.isEmpty else { return false }
+
+        let frame = window.convertToScreen(button.convert(button.bounds, to: nil))
+        return NSScreen.screens.contains { $0.frame.intersects(frame) }
+    }
+
+    private func startAnchorMonitor() {
+        anchorMonitor?.cancel()
+        hasSeenVisibleAnchor = statusItemAnchorIsVisible()
+        // macOS can temporarily hide an otherwise "visible" status item in the overflow area.
+        // Sample only while the popover is open; a hidden anchor must not leave an orphaned panel.
+        anchorMonitor = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .milliseconds(400)) }
+                catch { return }
+                guard let self, self.popover.isShown else { return }
+                if self.statusItemAnchorIsVisible() {
+                    self.hasSeenVisibleAnchor = true
+                } else if self.hasSeenVisibleAnchor {
+                    self.popover.close()
+                    return
+                }
+            }
+        }
+    }
+
     private func showContextMenu(relativeTo button: NSStatusBarButton) {
-        popover.performClose(nil)
+        popover.close()
 
         let menu = makeContextMenu()
         menu.popUp(
@@ -423,36 +452,27 @@ final class MenuBarController: NSObject {
 }
 
 extension MenuBarController: NSPopoverDelegate {
+    func popoverShouldClose(_ popover: NSPopover) -> Bool {
+        guard let event = NSApp.currentEvent,
+              event.type == .leftMouseDown || event.type == .rightMouseDown,
+              let button = statusItem.button,
+              let window = button.window else { return true }
+        let frame = window.convertToScreen(button.convert(button.bounds, to: nil))
+        // A transient popover may dismiss on mouse-down before the status button's
+        // mouse-up action. Let that action close it, instead of immediately reopening it.
+        return !frame.contains(NSEvent.mouseLocation)
+    }
+
     func popoverDidShow(_ notification: Notification) {
+        startAnchorMonitor()
         updateRefreshVisibility()
     }
 
     func popoverDidClose(_ notification: Notification) {
-        if #available(macOS 27.0, *) {
-            // 由弹窗内操作或失焦关闭时，也要结束系统会话，避免菜单栏仍认为它展开。
-            statusItem.expandedInterfaceSession?.cancel()
-        }
+        anchorMonitor?.cancel()
+        anchorMonitor = nil
+        hasSeenVisibleAnchor = false
         updateRefreshVisibility()
-    }
-}
-
-@available(macOS 27.0, *)
-// AppKit calls this UI delegate on the main thread, but its new protocol lacks actor isolation.
-extension MenuBarController: @preconcurrency NSStatusItemExpandedInterfaceDelegate {
-    func statusItem(
-        _ statusItem: NSStatusItem,
-        didBegin expandedInterfaceSession: NSStatusItemExpandedInterfaceSession
-    ) {
-        guard let button = statusItem.button else { return }
-        showPopover(relativeTo: button)
-    }
-
-    func statusItemDidEndExpandedInterfaceSession(
-        _ statusItem: NSStatusItem,
-        animated: Bool
-    ) {
-        // 点击菜单栏之外或隐藏菜单栏自动收起时，系统会结束会话。
-        popover.performClose(nil)
     }
 }
 
