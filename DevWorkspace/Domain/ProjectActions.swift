@@ -16,6 +16,7 @@ struct ProjectPreferences: Codable, Equatable, Sendable {
     let projectID: ProjectIdentifier
     var editor: ProjectEditor?
     var links: [ProjectLink] = []
+    var profile: ProjectProfile? = nil
 }
 
 enum ProjectURLPolicy {
@@ -44,6 +45,8 @@ struct DiscoveredProjectLink: Codable, Equatable, Identifiable, Sendable {
 struct ProjectDiscovery: Codable, Equatable, Sendable {
     var links: [DiscoveredProjectLink] = []
     var dockerFiles: [String] = []
+    var packageScripts: [DiscoveredPackageScript] = []
+    var packageDigest: String? = nil
     var issues: [ConfigurationIssue] = []
 }
 

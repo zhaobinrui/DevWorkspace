@@ -257,6 +257,7 @@
 "actions.detected-hints" = "Detected Items";
 "actions.last-success" = "Last Complete Scan";
 "actions.last-attempt" = "Last Attempt";
+"actions.scripts-found" = "%d package.json scripts are available in Project Profile.";
 
 /* Common applications and shared process observation */
 "apps.open-project" = "Open This Project";
@@ -274,3 +275,38 @@
 "processes.scope" = "Shared TCP listeners and UDP bindings across all projects, with project attribution.";
 "processes.empty" = "No User Processes with Listening Ports";
 "processes.not-loaded" = "User Processes Not Loaded";
+
+/* Project Profile review and trust */
+"profile.title" = "Project Profile";
+"profile.intro" = "Choose package.json scripts and record Homebrew dependencies. Saving a draft does not run commands. Trust applies only to the reviewed project and file version.";
+"profile.role.start" = "Start";
+"profile.role.stop" = "Stop";
+"profile.role.test" = "Test";
+"profile.not-set" = "Not set";
+"profile.choose-script" = "Choose script…";
+"profile.no-scripts" = "No package.json scripts available. Scan the project configuration to import commands.";
+"profile.remove" = "Remove";
+"profile.homebrew" = "Homebrew Dependencies";
+"profile.homebrew-note" = "Enter formula names explicitly. Service status and startup are coming in the next stage.";
+"profile.homebrew-placeholder" = "e.g. redis or postgresql@17";
+"profile.add" = "Add";
+"profile.urls" = "%d saved project URLs are available alongside this Profile.";
+"profile.review-trust" = "Review & Trust Profile…";
+"profile.preview-title" = "Review Imported Command";
+"profile.preview-warning" = "npm scripts may execute other scripts or lifecycle hooks. Review the repository before trusting it. Nothing runs during preview or trust.";
+"profile.save-draft" = "Save Draft";
+"profile.trust-title" = "Trust Project Profile";
+"profile.trust-note" = "Check every command, its script body and working directory. Profile edits revoke trust immediately; a rescan detects package.json changes. Execution must recheck the source.";
+"profile.confirm-trust" = "Trust This Version";
+"profile.status.absent" = "Not configured";
+"profile.status.draft" = "Draft · not trusted";
+"profile.status.needs-scan" = "Verify source";
+"profile.status.changed" = "Source changed · trust revoked";
+"profile.status.trusted" = "Trusted";
+"profile.accepted-at" = "Trusted on";
+"profile.source-checked" = "Source checked";
+"profile.error.invalid-name" = "Enter a valid Homebrew formula name.";
+"profile.error.invalid-profile" = "Invalid Profile. Review its commands and dependencies.";
+"profile.error.review-changed" = "package.json changed after preview. Scan and review it again.";
+"profile.error.missing-script" = "A selected script is missing. Review the Profile again.";
+"profile.error.project-changed" = "The selected project or Profile changed. Review it again.";

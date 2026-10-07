@@ -103,7 +103,10 @@ final class UIRenderingTests: XCTestCase {
         let link = ProjectLink(name: "API 文档", url: URL(string: "http://localhost:9090/api/docs")!)
         let preferences = ProjectPreferences(projectID: project.id,
             editor: ProjectEditor(bundleIdentifier: "com.jetbrains.intellij", applicationURL: URL(fileURLWithPath: "/Applications/IntelliJ IDEA.app"), name: "IntelliJ IDEA"), links: [link])
-        let catalog = ProjectCatalog(projects: [project], selectedID: project.id, preferences: [preferences])
+        var profiled = preferences
+        profiled.profile = ProjectProfile(commands: [ProfileScriptCommand(role: .start, scriptName: "dev")],
+                                          homebrewServices: ["postgresql@17"])
+        let catalog = ProjectCatalog(projects: [project], selectedID: project.id, preferences: [profiled])
         let store = WorkspaceStore(provider: PreviewWorkspaceSnapshotProvider(), catalogRepository: DashboardCaptureCatalog(catalog: catalog), configurationReader: ActionCaptureConfiguration())
         await store.discoverConfiguration()
         let output = URL(fileURLWithPath: "/private/tmp/devworkspace-dashboard-qa/actions")
@@ -550,6 +553,9 @@ private struct DashboardCaptureCatalog: ProjectCatalogPersisting {
 private struct ActionCaptureConfiguration: ProjectConfigurationReading {
     func read(root: URL) async throws -> ProjectDiscovery {
         ProjectDiscovery(links: [DiscoveredProjectLink(name: "Service", url: URL(string: "http://localhost:9090/api")!, source: "src/main/resources/application.yml · server.port"),
-            DiscoveredProjectLink(name: "API docs", url: URL(string: "http://localhost:9090/api/docs")!, source: "src/main/resources/application.yml · springdoc.swagger-ui.path")], dockerFiles: ["Dockerfile", "compose.yaml"])
+            DiscoveredProjectLink(name: "API docs", url: URL(string: "http://localhost:9090/api/docs")!, source: "src/main/resources/application.yml · springdoc.swagger-ui.path")],
+            dockerFiles: ["Dockerfile", "compose.yaml"],
+            packageScripts: [DiscoveredPackageScript(name: "dev", body: "vite --port 5173")],
+            packageDigest: String(repeating: "a", count: 64))
     }
 }

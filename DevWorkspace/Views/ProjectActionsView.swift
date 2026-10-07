@@ -35,6 +35,8 @@ struct ProjectActionsView: View {
                 } else {
                     Divider()
                     links(project)
+                    Divider()
+                    ProjectProfileView(store: store)
                     DisclosureGroup(isExpanded: $showsConfiguration) {
                         discovery(project).padding(.top, 12)
                     } label: {
@@ -45,7 +47,7 @@ struct ProjectActionsView: View {
                             }
                             Spacer()
                             if let result = store.discovery?.value {
-                                Text(result.links.count + result.dockerFiles.count, format: .number)
+                                Text(result.links.count + result.dockerFiles.count + result.packageScripts.count, format: .number)
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -266,8 +268,12 @@ struct ProjectActionsView: View {
                     }.font(.caption2).foregroundStyle(.secondary)
                 }
                 if let result = reading.value {
-                    if result.links.isEmpty && result.dockerFiles.isEmpty && result.issues.isEmpty {
+                    if result.links.isEmpty && result.dockerFiles.isEmpty && result.packageScripts.isEmpty && result.issues.isEmpty {
                         Text("actions.no-config").font(.caption).foregroundStyle(.secondary)
+                    }
+                    if !result.packageScripts.isEmpty {
+                        Text(String(format: language.localized("actions.scripts-found"), result.packageScripts.count))
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                     ForEach(result.links) { link in
                         HStack {

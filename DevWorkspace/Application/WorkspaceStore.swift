@@ -247,10 +247,57 @@ final class WorkspaceStore {
         guard preferences.links.allSatisfy({ ProjectURLPolicy.validated($0.url.absoluteString) != nil }) else {
             throw ProjectActionFailure.invalidURL
         }
+        guard preferences.profile?.isValid() != false else { throw ProfileFailure.invalidProfile }
         var updated = catalog
         updated.preferences.removeAll { $0.projectID == preferences.projectID }
         updated.preferences.append(preferences)
         try persist(updated)
+    }
+
+    func saveProfileDraft(_ draft: ProjectProfile, for id: ProjectIdentifier) throws {
+        guard draft.isValid() else { throw ProfileFailure.invalidProfile }
+        var preferences = preferences(for: id)
+        var untrusted = draft
+        untrusted.trust = nil
+        preferences.profile = untrusted.isEmpty ? nil : untrusted
+        try savePreferences(preferences)
+    }
+
+    func profileTrustStatus(for project: ProjectReference) -> ProfileTrustStatus {
+        guard let profile = preferences(for: project.id).profile else { return .absent }
+        guard profile.trust != nil else { return .draft }
+        guard let reading = discovery, reading.failure == nil, let value = reading.value,
+              !value.issues.contains(where: { $0.source.hasPrefix("package.json") }),
+              profile.commands.isEmpty || value.packageDigest != nil else { return .needsScan }
+        return profile.isTrusted(projectID: project.id, root: project.rootDirectory,
+                                 packageDigest: value.packageDigest)
+            ? .trusted : .sourceChanged
+    }
+
+    func trustProfile(for id: ProjectIdentifier, reviewed: ProjectProfile,
+                      packageDigest: String?) async throws {
+        guard let project, project.id == id, !catalogLoadBlocked,
+              preferences(for: id).profile == reviewed else { throw ProfileFailure.projectChanged }
+        let revision = selectionRevision
+        // Re-read before recording trust so a changed repository cannot reuse an old preview.
+        let fresh = try await configurationReader.read(root: project.rootDirectory)
+        try Task.checkCancellation()
+        guard revision == selectionRevision, self.project?.id == id,
+              preferences(for: id).profile == reviewed else { throw ProfileFailure.projectChanged }
+        guard !fresh.issues.contains(where: { $0.source.hasPrefix("package.json") }),
+              fresh.packageDigest == packageDigest else { throw ProfileFailure.reviewChanged }
+        guard reviewed.commands.allSatisfy({ command in
+            fresh.packageScripts.contains(where: { $0.name == command.scriptName })
+        }) else { throw ProfileFailure.missingScript }
+        guard let fingerprint = reviewed.fingerprint(projectID: id, root: project.rootDirectory,
+                                                    packageDigest: fresh.packageDigest) else {
+            throw ProfileFailure.invalidProfile
+        }
+        var preferences = preferences(for: id)
+        var trusted = reviewed
+        trusted.trust = ProfileTrust(fingerprint: fingerprint, acceptedAt: .now)
+        preferences.profile = trusted
+        try savePreferences(preferences)
     }
 
     func discoverConfiguration() async {
@@ -269,6 +316,10 @@ final class WorkspaceStore {
                 value.links.removeAll { failedFiles.contains($0.source.components(separatedBy: " · ")[0]) }
                 value.links += (previous?.value?.links ?? []).filter { failedFiles.contains($0.source.components(separatedBy: " · ")[0]) }
                 value.dockerFiles += (previous?.value?.dockerFiles ?? []).filter { failedFiles.contains($0) }
+                if failedFiles.contains("package.json") {
+                    value.packageScripts = previous?.value?.packageScripts ?? []
+                    value.packageDigest = previous?.value?.packageDigest
+                }
                 discovery = SourceReading(value: value, checkedAt: previous?.checkedAt,
                                           attemptedAt: .now, failure: issue.failure)
             } else {

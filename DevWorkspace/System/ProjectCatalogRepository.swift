@@ -37,6 +37,7 @@ struct FileProjectCatalogRepository: ProjectCatalogPersisting {
                       && (preference.editor == nil || preference.editor?.applicationURL.isFileURL == true)
                       && Set(preference.links.map(\.id)).count == preference.links.count
                       && preference.links.allSatisfy { ProjectURLPolicy.validated($0.url.absoluteString) != nil }
+                      && (preference.profile?.isValid() ?? true)
                   }) else { throw LocalReadFailure(kind: .corruptStorage) }
             return catalog
         } catch let failure as LocalReadFailure { throw failure }

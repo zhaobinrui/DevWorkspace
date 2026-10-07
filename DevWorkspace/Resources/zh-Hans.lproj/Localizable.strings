@@ -257,6 +257,7 @@
 "actions.detected-hints" = "识别结果";
 "actions.last-success" = "上次完整读取";
 "actions.last-attempt" = "本次尝试";
+"actions.scripts-found" = "已识别 %d 个 package.json 脚本，可在 Project Profile 中预览。";
 
 /* Common applications and shared process observation */
 "apps.open-project" = "打开当前项目";
@@ -274,3 +275,38 @@
 "processes.scope" = "所有项目共用的 TCP 监听与 UDP 绑定进程；按项目标明归属。";
 "processes.empty" = "当前没有监听端口的用户进程";
 "processes.not-loaded" = "尚未读取用户进程";
+
+/* Project Profile review and trust */
+"profile.title" = "Project Profile";
+"profile.intro" = "从 package.json 选择脚本并登记 Homebrew 依赖。保存草稿不会执行命令；信任仅适用于已预览的项目和文件版本。";
+"profile.role.start" = "启动";
+"profile.role.stop" = "停止";
+"profile.role.test" = "测试";
+"profile.not-set" = "未设置";
+"profile.choose-script" = "选择脚本…";
+"profile.no-scripts" = "尚无可用的 package.json 脚本。请先识别项目配置。";
+"profile.remove" = "移除";
+"profile.homebrew" = "Homebrew 依赖";
+"profile.homebrew-note" = "请明确填写 formula 名称；服务状态和启动将在下一阶段接入。";
+"profile.homebrew-placeholder" = "例如 redis 或 postgresql@17";
+"profile.add" = "添加";
+"profile.urls" = "此项目已有 %d 个地址，可与 Profile 一起使用。";
+"profile.review-trust" = "预览并信任 Profile…";
+"profile.preview-title" = "预览导入命令";
+"profile.preview-warning" = "npm 脚本可能调用其他脚本或生命周期钩子。信任前请检查仓库；预览和确认均不会执行命令。";
+"profile.save-draft" = "保存草稿";
+"profile.trust-title" = "信任 Project Profile";
+"profile.trust-note" = "请核对每条命令、脚本正文和工作目录。修改 Profile 会立即撤销信任；重新识别可发现 package.json 变化，执行前仍须复核来源。";
+"profile.confirm-trust" = "信任此版本";
+"profile.status.absent" = "尚未配置";
+"profile.status.draft" = "草稿 · 未信任";
+"profile.status.needs-scan" = "需核对来源";
+"profile.status.changed" = "来源已变更 · 信任失效";
+"profile.status.trusted" = "已信任";
+"profile.accepted-at" = "信任确认";
+"profile.source-checked" = "来源核对";
+"profile.error.invalid-name" = "请输入有效的 Homebrew formula 名称。";
+"profile.error.invalid-profile" = "Profile 无效，请检查命令与依赖。";
+"profile.error.review-changed" = "预览后 package.json 已变化，请重新识别并确认。";
+"profile.error.missing-script" = "选定的脚本已不存在，请重新检查 Profile。";
+"profile.error.project-changed" = "项目或 Profile 已变化，请重新确认。";

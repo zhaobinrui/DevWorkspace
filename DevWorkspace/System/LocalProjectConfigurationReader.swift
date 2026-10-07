@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import CryptoKit
 
 struct LocalProjectConfigurationReader: ProjectConfigurationReading {
     static let dockerNames = ["Dockerfile", "dockerfile", "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"]
@@ -29,6 +30,8 @@ struct LocalProjectConfigurationReader: ProjectConfigurationReading {
                 }
                 let parsed = try parse(data: file.data, source: name)
                 result.links += parsed.links
+                result.packageScripts += parsed.packageScripts
+                if let digest = parsed.packageDigest { result.packageDigest = digest }
                 result.issues += parsed.issues
             } catch is CancellationError { throw CancellationError() }
             catch { result.issues.append(ConfigurationIssue(source: name, failure: .classify(error))) }
@@ -91,9 +94,20 @@ struct LocalProjectConfigurationReader: ProjectConfigurationReading {
                   let json = object as? [String: Any] else {
                 throw LocalReadFailure(kind: .invalidOutput)
             }
+            result.packageDigest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            let scripts = json["scripts"] as? [String: String] ?? [:]
+            for (name, body) in scripts.sorted(by: { $0.key < $1.key }) {
+                // Script bodies are previewed in memory but never copied into project preferences.
+                guard ProjectProfile.validScriptName(name), body.utf8.count <= 8_192,
+                      !body.contains("\0") else {
+                    result.issues.append(ConfigurationIssue(source: "package.json · scripts", failure: .init(kind: .invalidOutput)))
+                    continue
+                }
+                result.packageScripts.append(DiscoveredPackageScript(name: name, body: body))
+            }
             // Only literal port flags are hints; never evaluate scripts or infer HTTP from arbitrary processes.
             let expression = try NSRegularExpression(pattern: #"(?:^|\s)--port(?:=|\s+)([0-9]{1,5})(?=\s|$)"#)
-            for (key, value) in (json["scripts"] as? [String: String] ?? [:]).sorted(by: { $0.key < $1.key }) {
+            for (key, value) in scripts.sorted(by: { $0.key < $1.key }) {
                 guard ["start", "dev", "serve"].contains(key) else { continue }
                 guard let match = expression.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)),
                       let range = Range(match.range(at: 1), in: value), let port = UInt16(value[range]), port > 0 else {
