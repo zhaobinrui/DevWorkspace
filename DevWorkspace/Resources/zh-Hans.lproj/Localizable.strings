@@ -65,6 +65,11 @@
 "local.error.processChanged" = "读取期间进程身份发生变化，请刷新后再确认归属。";
 "local.error.corruptStorage" = "项目列表文件无法解析，原文件已保留，请恢复后重试。";
 "local.error.unsupportedVersion" = "项目列表采用较新版本的格式，请更新 DevWorkspace 后再修改。";
+"local.error.dockerNotInstalled" = "未安装 Docker 命令行工具；安装后可读取 Compose 状态。";
+"local.error.dockerComposeUnavailable" = "Docker Compose 不可用；请安装或启用 Compose 插件。";
+"local.error.dockerDaemonUnavailable" = "本机 Docker 后台服务不可用，请启动 Docker 后重试。";
+"local.error.dockerRemoteContext" = "当前 Docker context 指向远程主机；请切换到本机 Unix socket context 后刷新。";
+"local.error.dockerAttributionUncertain" = "无法通过 Compose 标签与目录确认容器归属，未发布新的项目状态。";
 "language.name.simplified-chinese" = "简体中文";
 
 "settings.tab.general" = "通用";
@@ -222,6 +227,23 @@
 "actions.review" = "确认并保存…";
 "actions.reveal" = "在 Finder 中查看";
 "actions.docker-note" = "已识别配置文件。本轮仅提供查看入口；容器启动尚未实现。";
+"docker.compose.title" = "Docker Compose";
+"docker.compose.readonly" = "只读取本机容器状态；端口存在不代表项目已就绪，此处不会启动容器。";
+"docker.compose.empty" = "此 Compose 项目尚无容器。";
+"docker.compose.last-empty" = "上次成功扫描未发现容器，当前状态未知。";
+"docker.compose.empty-note" = "可在 DevWorkspace 外启动服务后刷新查看。";
+"docker.compose.stale-note" = "下方容器显示上次可信状态，并非当前实时状态。";
+"docker.compose.evidence" = "Compose 项目 %@ · 容器 %@";
+"docker.compose.healthy" = "健康";
+"docker.compose.unhealthy" = "不健康";
+"docker.compose.starting" = "健康检查中";
+"docker.compose.running-unchecked" = "运行中 · 未验证健康";
+"docker.compose.restarting" = "重启中";
+"docker.compose.stopped" = "已停止";
+"docker.compose.created" = "已创建 · 未运行";
+"docker.compose.paused" = "已暂停";
+"docker.compose.removing" = "移除中";
+"docker.compose.dead" = "不可用";
 "actions.review-title" = "确认项目地址";
 "actions.link-name" = "名称，例如 API 文档";
 "actions.link-url" = "http://localhost:8080";

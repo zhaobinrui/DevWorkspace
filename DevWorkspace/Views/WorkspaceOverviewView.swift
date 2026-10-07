@@ -17,6 +17,7 @@ struct WorkspaceOverviewView: View {
             VStack(alignment: .leading, spacing: 20) {
                 gitSection(readings.git)
                 portsSection(readings.ports)
+                if let compose = readings.compose { composeSection(compose) }
             }
         } else if let reading = store.userProcesses {
             // Keep cached project attribution visible while its independent Git request is loading.
@@ -64,6 +65,93 @@ struct WorkspaceOverviewView: View {
                 .foregroundStyle(emphasized ? Color.accentColor : .primary)
             Label(title, systemImage: symbol).font(.system(size: 11)).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func composeSection(_ reading: SourceReading<ComposeProjectStatus>) -> some View {
+        WorkspacePanel {
+            sectionHeader("docker.compose.title", symbol: "shippingbox", reading: reading)
+            Text("docker.compose.readonly").font(.system(size: 10)).foregroundStyle(.secondary)
+            sourceFailure(reading)
+            if let status = reading.value {
+                if reading.failure != nil {
+                    Text("docker.compose.stale-note").font(.caption).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 10) {
+                    Label(status.configurationName, systemImage: "doc.text").textSelection(.enabled)
+                    if let projectName = status.projectName {
+                        Label(projectName, systemImage: "square.stack.3d.up").textSelection(.enabled)
+                    }
+                }.font(.caption).foregroundStyle(.secondary)
+                if status.containers.isEmpty {
+                    quietState(reading.failure == nil ? "docker.compose.empty" : "docker.compose.last-empty",
+                               symbol: "shippingbox", detail: "docker.compose.empty-note")
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(status.containers) { container in
+                            composeRow(container, stale: reading.failure != nil)
+                            if container.id != status.containers.last?.id { Divider().padding(.vertical, 10) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func composeRow(_ container: ComposeContainer, stale: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(container.serviceName).font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Label(composeStatusKey(container), systemImage: composeStatusSymbol(container))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(composeStatusColor(container, stale: stale))
+            }
+            Text(String(format: language.localized("docker.compose.evidence"),
+                        container.projectName, String(container.id.prefix(12))))
+                .font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+            ForEach(container.ports, id: \.self) { port in
+                Text("\(port.address):\(String(port.published)) → \(String(port.target))/\(port.transport)")
+                    .font(.caption.monospaced()).textSelection(.enabled)
+            }
+        }
+    }
+
+    private func composeStatusKey(_ container: ComposeContainer) -> LocalizedStringKey {
+        if container.isUnhealthy { return "docker.compose.unhealthy" }
+        switch container.state {
+        case .running:
+            switch container.health {
+            case .healthy: return "docker.compose.healthy"
+            case .starting: return "docker.compose.starting"
+            case .unhealthy: return "docker.compose.unhealthy"
+            case nil: return "docker.compose.running-unchecked"
+            }
+        case .restarting: return "docker.compose.restarting"
+        case .exited: return "docker.compose.stopped"
+        case .created: return "docker.compose.created"
+        case .paused: return "docker.compose.paused"
+        case .removing: return "docker.compose.removing"
+        case .dead: return "docker.compose.dead"
+        }
+    }
+
+    private func composeStatusSymbol(_ container: ComposeContainer) -> String {
+        if container.isUnhealthy { return "exclamationmark.triangle.fill" }
+        switch container.state {
+        case .running: return container.health == .healthy ? "checkmark.circle.fill" : "circle.dotted"
+        case .restarting: return "arrow.clockwise"
+        case .exited, .created, .paused, .removing, .dead: return "stop.circle"
+        }
+    }
+
+    private func composeStatusColor(_ container: ComposeContainer, stale: Bool) -> Color {
+        if stale { return .secondary }
+        if container.isUnhealthy { return .orange }
+        switch container.state {
+        case .running: return container.health == .healthy ? .green : .secondary
+        case .restarting: return .orange
+        case .exited, .created, .paused, .removing, .dead: return .secondary
+        }
     }
 
     private func portsSection(_ reading: SourceReading<[ListeningProcess]>) -> some View {

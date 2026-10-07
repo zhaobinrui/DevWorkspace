@@ -27,7 +27,7 @@ final class UIRenderingTests: XCTestCase {
         let date = Date(timeIntervalSince1970: 1_789_999_000)
         let git = GitSummary(branch: "feature/workspace-overview", changedFileCount: 8, commitsAhead: 2, commitsBehind: 0, upstream: "origin/main")
         let processes = [testProcess(pid: 31415, directory: "/Projects/DevSpace"), testProcess(pid: 27182, directory: "/Projects/DevSpace/server")]
-        for scenario in ["light", "dark", "empty", "error", "narrow", "onboarding", "unavailable", "non-git", "processes", "processes-error", "processes-empty"] {
+        for scenario in ["light", "dark", "empty", "error", "narrow", "onboarding", "unavailable", "non-git", "processes", "processes-error", "processes-empty", "compose", "compose-error"] {
             let failed = scenario == "error" || scenario == "processes-error"
             var readings = WorkspaceReadings(
                 git: SourceReading(value: git, checkedAt: date, attemptedAt: date.addingTimeInterval(60), failure: failed ? .init(kind: .permissionDenied) : nil),
@@ -41,6 +41,18 @@ final class UIRenderingTests: XCTestCase {
             if scenario == "unavailable" {
                 readings.git = .failed(LocalReadFailure(kind: .permissionDenied), at: date)
                 readings.ports = .failed(LocalReadFailure(kind: .timedOut), at: date)
+            }
+            if scenario.hasPrefix("compose") {
+                let containers = [
+                    ComposeContainer(id: "abc1234567890123", projectName: "devspace", serviceName: "api",
+                                     state: .running, health: .healthy,
+                                     ports: [ComposePublishedPort(address: "127.0.0.1", target: 8080, published: 18080, transport: "tcp")]),
+                    ComposeContainer(id: "def1234567890123", projectName: "devspace", serviceName: "db",
+                                     state: .running, health: .unhealthy, ports: []),
+                ]
+                let status = ComposeProjectStatus(configurationName: "compose.yaml", projectName: "devspace", containers: containers)
+                readings.compose = SourceReading(value: status, checkedAt: date, attemptedAt: date.addingTimeInterval(60),
+                                                 failure: scenario == "compose-error" ? .init(kind: .dockerDaemonUnavailable) : nil)
             }
             let snapshot = WorkspaceSnapshot(project: project, lifecycle: .observed, git: git, services: [], observedAt: date, freshness: .current, origin: .local, readings: readings)
             let catalog = scenario == "onboarding" ? ProjectCatalog() : ProjectCatalog(projects: [project, sibling], selectedID: project.id)
@@ -65,6 +77,20 @@ final class UIRenderingTests: XCTestCase {
             let bitmap = try XCTUnwrap(NSBitmapImageRep(cgImage: image).converting(to: .sRGB, renderingIntent: .perceptual))
             let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
             try data.write(to: output.appendingPathComponent("\(scenario).png"))
+            if scenario.hasPrefix("compose") {
+                let detail = ImageRenderer(content: AppLanguageRootView(settings: language) {
+                    WorkspaceOverviewView(store: store)
+                        .frame(width: 720, alignment: .topLeading)
+                        .padding(20)
+                        .background(Color.white)
+                })
+                detail.scale = 2
+                if #available(macOS 26.0, *) { detail.allowedDynamicRange = .standard }
+                let detailBitmap = try XCTUnwrap(NSBitmapImageRep(cgImage: try XCTUnwrap(detail.cgImage))
+                    .converting(to: .sRGB, renderingIntent: .perceptual))
+                try XCTUnwrap(detailBitmap.representation(using: .png, properties: [:]))
+                    .write(to: output.appendingPathComponent("\(scenario)-detail.png"))
+            }
         }
     }
 

@@ -65,6 +65,11 @@
 "local.error.processChanged" = "The process identity changed during the read. Refresh before confirming attribution.";
 "local.error.corruptStorage" = "The project list could not be decoded. The original file has been preserved; restore it and retry.";
 "local.error.unsupportedVersion" = "This project list uses a newer format. Update DevWorkspace before changing it.";
+"local.error.dockerNotInstalled" = "Docker CLI is not installed. Install Docker to read Compose status.";
+"local.error.dockerComposeUnavailable" = "Docker Compose is unavailable. Install or enable the Compose plugin.";
+"local.error.dockerDaemonUnavailable" = "The local Docker daemon is unavailable. Start Docker and retry.";
+"local.error.dockerRemoteContext" = "The selected Docker context is remote. Switch to a local Unix-socket context before refreshing.";
+"local.error.dockerAttributionUncertain" = "Container ownership could not be confirmed from Compose labels and paths. No new project status was published.";
 "language.name.simplified-chinese" = "Simplified Chinese";
 
 "settings.tab.general" = "General";
@@ -222,6 +227,23 @@
 "actions.review" = "Review & Save…";
 "actions.reveal" = "Show in Finder";
 "actions.docker-note" = "Configuration detected. File reveal is available; container startup is not implemented yet.";
+"docker.compose.title" = "Docker Compose";
+"docker.compose.readonly" = "Read-only local container status. Listening ports do not prove the application is ready; containers are never started here.";
+"docker.compose.empty" = "No containers found for this Compose project.";
+"docker.compose.last-empty" = "The last successful scan found no containers; current status is unknown.";
+"docker.compose.empty-note" = "Start services outside DevWorkspace, then refresh to observe them.";
+"docker.compose.stale-note" = "The containers below show the last trusted state, not the current state.";
+"docker.compose.evidence" = "Compose project %@ · container %@";
+"docker.compose.healthy" = "Healthy";
+"docker.compose.unhealthy" = "Unhealthy";
+"docker.compose.starting" = "Health check starting";
+"docker.compose.running-unchecked" = "Running · health not checked";
+"docker.compose.restarting" = "Restarting";
+"docker.compose.stopped" = "Stopped";
+"docker.compose.created" = "Created · not running";
+"docker.compose.paused" = "Paused";
+"docker.compose.removing" = "Removing";
+"docker.compose.dead" = "Dead";
 "actions.review-title" = "Review Project Link";
 "actions.link-name" = "Name, e.g. API Docs";
 "actions.link-url" = "http://localhost:8080";

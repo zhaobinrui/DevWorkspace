@@ -8,7 +8,8 @@ final class SharedUserProcessTests: XCTestCase {
         let a = try testProject(URL(fileURLWithPath: "/private/tmp/a"))
         let b = try testProject(URL(fileURLWithPath: "/private/tmp/b"))
         let scanner = CountingProcessScanner(results: [.success([testProcess(directory: a.rootDirectory.path), testProcess(pid: 66, directory: b.rootDirectory.path)]), .success([])])
-        let provider = ObservedWorkspaceSnapshotProvider(gitReader: EmptyGitReader(), portScanner: scanner)
+        let provider = ObservedWorkspaceSnapshotProvider(gitReader: EmptyGitReader(), portScanner: scanner,
+                                                         composeReader: EmptyComposeReader())
         let store = WorkspaceStore(project: a, provider: provider, rootResolver: FixtureProjectResolver(project: b))
         await store.refresh(forceProcessRefresh: false)
         let original = store.userProcesses
@@ -28,7 +29,8 @@ final class SharedUserProcessTests: XCTestCase {
 
     func test_processes_withoutProject_shouldStillLoadAndReportEmpty() async {
         let scanner = CountingProcessScanner(results: [.success([])])
-        let store = WorkspaceStore(provider: ObservedWorkspaceSnapshotProvider(gitReader: EmptyGitReader(), portScanner: scanner))
+        let store = WorkspaceStore(provider: ObservedWorkspaceSnapshotProvider(gitReader: EmptyGitReader(), portScanner: scanner,
+                                                                               composeReader: EmptyComposeReader()))
         await store.refreshUserProcesses()
         XCTAssertNil(store.project)
         XCTAssertEqual(store.userProcesses?.value, [])
@@ -55,7 +57,8 @@ final class SharedUserProcessTests: XCTestCase {
     func test_processFailure_shouldUpdateProjectStatusWithoutRereadingGit() async throws {
         let project = try testProject(URL(fileURLWithPath: "/private/tmp/a"))
         let scanner = CountingProcessScanner(results: [.success([testProcess()]), .failure(.init(kind: .timedOut)), .success([])])
-        let store = WorkspaceStore(project: project, provider: ObservedWorkspaceSnapshotProvider(gitReader: EmptyGitReader(), portScanner: scanner))
+        let store = WorkspaceStore(project: project, provider: ObservedWorkspaceSnapshotProvider(gitReader: EmptyGitReader(), portScanner: scanner,
+                                                                                                  composeReader: EmptyComposeReader()))
         await store.refresh()
         let originalGit = store.currentSnapshot?.readings?.git
         await store.refreshUserProcesses()
@@ -71,7 +74,7 @@ final class SharedUserProcessTests: XCTestCase {
     func test_missingRepository_shouldNotPreventUserProcessObservation() async throws {
         let project = try testProject(URL(fileURLWithPath: "/private/tmp/nonexistent-" + UUID().uuidString))
         let scanner = CountingProcessScanner(results: [.success([])])
-        let provider = ObservedWorkspaceSnapshotProvider(portScanner: scanner)
+        let provider = ObservedWorkspaceSnapshotProvider(portScanner: scanner, composeReader: EmptyComposeReader())
         let snapshot = try await provider.snapshot(for: project)
         XCTAssertNotNil(snapshot.readings?.git.failure)
         XCTAssertNil(snapshot.readings?.ports.failure)
@@ -124,6 +127,10 @@ final class SharedUserProcessTests: XCTestCase {
 
 private struct EmptyGitReader: GitStatusReading {
     func status(for project: ProjectReference) async throws -> GitSummary? { nil }
+}
+
+private struct EmptyComposeReader: DockerComposeStatusReading {
+    func read(root: URL) async throws -> ComposeProjectStatus? { nil }
 }
 
 private actor CountingProcessScanner: LocalPortScanning {

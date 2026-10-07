@@ -3,6 +3,7 @@ import Foundation
 enum LocalFailureKind: String, Codable, Sendable {
     case permissionDenied, timedOut, unavailable, invalidOutput, outputLimit
     case invalidDirectory, identityConflict, processChanged, corruptStorage, unsupportedVersion
+    case dockerNotInstalled, dockerComposeUnavailable, dockerDaemonUnavailable, dockerRemoteContext, dockerAttributionUncertain
 }
 
 struct LocalReadFailure: Error, Codable, Equatable, Sendable {
@@ -46,13 +47,15 @@ struct SourceReading<Value: Codable & Equatable & Sendable>: Codable, Equatable,
 struct WorkspaceReadings: Codable, Equatable, Sendable {
     var git: SourceReading<GitSummary>
     var ports: SourceReading<[ListeningProcess]>
+    var compose: SourceReading<ComposeProjectStatus>? = nil
 
-    var hasFailure: Bool { git.failure != nil || ports.failure != nil }
+    var hasFailure: Bool { git.failure != nil || ports.failure != nil || compose?.failure != nil }
 
     func retainingTrustedValues(from previous: Self?) -> Self {
         Self(
             git: git.retainingTrustedValue(from: previous?.git),
-            ports: ports.retainingTrustedValue(from: previous?.ports)
+            ports: ports.retainingTrustedValue(from: previous?.ports),
+            compose: compose?.retainingTrustedValue(from: previous?.compose)
         )
     }
 }
