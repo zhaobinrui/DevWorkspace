@@ -57,21 +57,10 @@ struct LocalGitClient: Sendable {
 }
 
 struct LocalProjectRootResolver: ProjectRootResolving {
-    var runner: any LocalCommandRunning = ReadOnlyCommandRunner()
-
     func project(at directory: URL) async throws -> ProjectReference {
-        var root = try LocalGitClient.validateDirectory(directory)
-        if try LocalGitClient.hasGitAncestor(root) {
-            let output = try await LocalGitClient(runner: runner).run(at: root, arguments: ["rev-parse", "--show-toplevel"])
-            try output.requireSuccess()
-            guard var path = String(data: output.standardOutput, encoding: .utf8), path.hasSuffix("\n") else {
-                throw LocalReadFailure(kind: .invalidOutput)
-            }
-            // Remove just Git's delimiter; spaces and newlines can be part of a valid directory name.
-            path.removeLast()
-            guard path.hasPrefix("/") else { throw LocalReadFailure(kind: .invalidOutput) }
-            root = try LocalGitClient.validateDirectory(URL(fileURLWithPath: path, isDirectory: true))
-        }
+        // A repository may contain several independently managed apps. Preserve the chosen
+        // directory for identity, editor, config and Compose; Git observation can use its ancestor.
+        let root = try LocalGitClient.validateDirectory(directory)
         try Task.checkCancellation()
         return ProjectReference(identity: try LocalProjectIdentityResolver().resolve(rootDirectory: root), name: root.lastPathComponent)
     }
@@ -103,6 +92,9 @@ struct LocalGitStatusReader: GitStatusReading {
         }
         let output = try await client.run(at: root, arguments: overrides + [
             "status", "--porcelain=v2", "--branch", "--untracked-files=all", "--ignore-submodules=all", "-z",
+            // Branch/upstream belong to the containing repository; file changes belong to this
+            // workspace project. An explicit pathspec prevents sibling apps from inflating it.
+            "--", ".",
         ])
         try output.requireSuccess()
         return try GitStatusParser.parse(output.standardOutput)

@@ -6,6 +6,11 @@ struct LocalProjectConfigurationReader: ProjectConfigurationReading {
     static let dockerNames = ["Dockerfile", "dockerfile", "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"]
     static let configurationNames = ["package.json", "application.properties", "application.yml", "application.yaml",
         "src/main/resources/application.properties", "src/main/resources/application.yml", "src/main/resources/application.yaml"]
+    private static let moduleDescriptors = ["pom.xml", "build.gradle", "build.gradle.kts"]
+    private static let moduleConfigurations = ["src/main/resources/application.properties",
+        "src/main/resources/application.yml", "src/main/resources/application.yaml"]
+    // Directory listing is bounded because an untrusted checkout may contain enormous generated trees.
+    private static let maximumRootEntries = 512
 
     func read(root: URL) async throws -> ProjectDiscovery {
         let worker = Task.detached(priority: .utility) { try Self.scan(root: root) }
@@ -19,7 +24,12 @@ struct LocalProjectConfigurationReader: ProjectConfigurationReading {
         guard access(canonical.path, R_OK | X_OK) == 0 else { throw LocalReadFailure(kind: .permissionDenied) }
         var result = ProjectDiscovery()
         var dockerIdentities = Set<String>()
-        for name in dockerNames + configurationNames {
+        var names = dockerNames + configurationNames
+        do {
+            names += try directModuleConfigurationNames(root: canonical, issues: &result.issues)
+        } catch is CancellationError { throw CancellationError() }
+        catch { result.issues.append(ConfigurationIssue(source: "modules", failure: .classify(error))) }
+        for name in names {
             try Task.checkCancellation()
             do {
                 guard let file = try readFile(name, root: canonical, content: !dockerNames.contains(name)) else { continue }
@@ -39,23 +49,56 @@ struct LocalProjectConfigurationReader: ProjectConfigurationReading {
         return result
     }
 
+    private static func directModuleConfigurationNames(root: URL, issues: inout [ConfigurationIssue]) throws -> [String] {
+        let entries = try FileManager.default.contentsOfDirectory(atPath: root.path).sorted()
+        guard entries.count <= maximumRootEntries else { throw LocalReadFailure(kind: .outputLimit) }
+        var names: [String] = []
+        for entry in entries where !entry.hasPrefix(".") {
+            try Task.checkCancellation()
+            var isModule = false
+            for descriptor in moduleDescriptors {
+                let path = "\(entry)/\(descriptor)"
+                do {
+                    if try readFile(path, root: root, content: false) != nil { isModule = true; break }
+                } catch {
+                    issues.append(ConfigurationIssue(source: path, failure: .classify(error)))
+                }
+            }
+            if isModule {
+                // Only direct build modules are considered; arbitrary nested trees and profile
+                // overlays could present unrelated or environment-dependent URLs as current.
+                names += moduleConfigurations.map { "\(entry)/\($0)" }
+            }
+        }
+        return names
+    }
+
     private static func readFile(_ name: String, root: URL, content: Bool) throws -> (data: Data, identity: String)? {
-        let file = root.appendingPathComponent(name).resolvingSymlinksInPath().standardizedFileURL
-        guard file.path.hasPrefix(root.path == "/" ? "/" : root.path + "/") else {
-            throw LocalReadFailure(kind: .permissionDenied)
+        let components = name.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard !components.isEmpty,
+              components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && !$0.contains("\0") }) else {
+            throw LocalReadFailure(kind: .invalidOutput)
         }
         // Nonblocking open plus fstat rejects FIFOs/devices; a hostile repository must not hang a refresh.
-        // Walk from an already opened root, refusing intermediate symlinks as well as final ones.
-        // Resolving a path before a single open() would otherwise leave a symlink-swap race.
+        // Walk from an already opened root, refusing intermediate and final symlinks without
+        // resolving the path first; otherwise a symlink swap could escape the chosen project.
         var parent = open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard parent >= 0 else { throw LocalReadFailure(kind: .permissionDenied) }
         defer { close(parent) }
-        let components = file.path.dropFirst(root.path == "/" ? 1 : root.path.count + 1).split(separator: "/").map(String.init)
         for component in components.dropLast() {
             let next = openat(parent, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard next >= 0 else {
-                if errno == ENOENT || errno == ENOTDIR { return nil }
-                throw LocalReadFailure(kind: [EACCES, EPERM, ELOOP].contains(errno) ? .permissionDenied : .unavailable)
+                let code = errno
+                if code == ENOENT { return nil }
+                if code == ENOTDIR {
+                    var item = stat()
+                    if fstatat(parent, component, &item, AT_SYMLINK_NOFOLLOW) == 0,
+                       (item.st_mode & S_IFMT) == S_IFLNK {
+                        throw LocalReadFailure(kind: .permissionDenied)
+                    }
+                    return nil
+                }
+                throw LocalReadFailure(kind: [EACCES, EPERM, ELOOP].contains(code) ? .permissionDenied : .unavailable)
             }
             close(parent); parent = next
         }
@@ -63,7 +106,7 @@ struct LocalProjectConfigurationReader: ProjectConfigurationReading {
         let fd = openat(parent, last, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else {
             if errno == ENOENT || errno == ENOTDIR { return nil }
-            throw LocalReadFailure(kind: [EACCES, EPERM].contains(errno) ? .permissionDenied : .unavailable)
+            throw LocalReadFailure(kind: [EACCES, EPERM, ELOOP].contains(errno) ? .permissionDenied : .unavailable)
         }
         defer { close(fd) }
         var info = stat()

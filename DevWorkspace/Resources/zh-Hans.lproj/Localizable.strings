@@ -221,7 +221,7 @@
 "actions.unverified" = "地址未进行联网检测；打开将交给默认浏览器。";
 "actions.discovered" = "项目配置";
 "actions.scan" = "重新识别";
-"actions.scan-scope" = "支持根目录 package.json、根目录及 src/main/resources 下的 application 配置。仅提取静态值，不解析环境变量、Profile 或动态脚本。";
+"actions.scan-scope" = "支持根目录 package.json，以及根目录和直属 Maven/Gradle 模块的 application 配置。仅提取静态值，不合并环境变量或 Profile；运行端口可能被覆盖。";
 "actions.no-config" = "支持的配置中未发现地址或 Docker 文件。可手动添加地址。";
 "actions.stale" = "配置读取不完整，部分信息可能来自上次成功识别。";
 "actions.review" = "确认并保存…";

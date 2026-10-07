@@ -126,6 +126,57 @@ final class ProjectActionsTests: XCTestCase {
         XCTAssertTrue(result.links.isEmpty)
     }
 
+    func test_discovery_whenMavenAndGradleModulesContainApplicationConfig_shouldFindStaticLinksWithSources() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let maven = directory.appendingPathComponent("controller/src/main/resources", isDirectory: true)
+        let gradle = directory.appendingPathComponent("api/src/main/resources", isDirectory: true)
+        let unrelated = directory.appendingPathComponent("unrelated/src/main/resources", isDirectory: true)
+        for folder in [maven, gradle, unrelated] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        try Data("<project/>".utf8).write(to: directory.appendingPathComponent("controller/pom.xml"))
+        try Data("plugins {}".utf8).write(to: directory.appendingPathComponent("api/build.gradle.kts"))
+        let yaml = "server:\n  port: 8080\nspringdoc:\n  swagger-ui:\n    path: /swagger-ui.html\n  api-docs:\n    path: /v3/api-docs\n"
+        try Data(yaml.utf8).write(to: maven.appendingPathComponent("application.yml"))
+        try Data("server.port=8443".utf8).write(to: maven.appendingPathComponent("application-https.yml"))
+        try Data("server.port=9090".utf8).write(to: gradle.appendingPathComponent("application.properties"))
+        try Data("server.port=7777".utf8).write(to: unrelated.appendingPathComponent("application.properties"))
+
+        let discovery = try await LocalProjectConfigurationReader().read(root: directory)
+        XCTAssertTrue(discovery.issues.isEmpty)
+        XCTAssertEqual(Set(discovery.links.map(\.url.absoluteString)), Set([
+            "http://localhost:9090", "http://localhost:8080", "http://localhost:8080/swagger-ui.html",
+            "http://localhost:8080/v3/api-docs",
+        ]))
+        XCTAssertTrue(discovery.links.contains { $0.source == "controller/src/main/resources/application.yml · server.port" })
+        XCTAssertFalse(discovery.links.contains { $0.url.port == 8443 || $0.url.port == 7777 })
+    }
+
+    func test_discovery_whenModuleConfigurationEscapesProject_shouldReportPermissionDenied() async throws {
+        let directory = try temporaryDirectory()
+        let outside = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory); try? FileManager.default.removeItem(at: outside) }
+        let resources = directory.appendingPathComponent("api/src/main/resources", isDirectory: true)
+        try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+        try Data("<project/>".utf8).write(to: directory.appendingPathComponent("api/pom.xml"))
+        let external = outside.appendingPathComponent("application.yml")
+        try Data("server:\n  port: 9999".utf8).write(to: external)
+        try FileManager.default.createSymbolicLink(at: resources.appendingPathComponent("application.yml"), withDestinationURL: external)
+        let linkedModule = directory.appendingPathComponent("linked")
+        let externalResources = outside.appendingPathComponent("main/resources", isDirectory: true)
+        try FileManager.default.createDirectory(at: linkedModule, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: externalResources, withIntermediateDirectories: true)
+        try Data("<project/>".utf8).write(to: linkedModule.appendingPathComponent("pom.xml"))
+        try Data("server.port=8888".utf8).write(to: externalResources.appendingPathComponent("application.properties"))
+        try FileManager.default.createSymbolicLink(at: linkedModule.appendingPathComponent("src"), withDestinationURL: outside)
+
+        let discovery = try await LocalProjectConfigurationReader().read(root: directory)
+        XCTAssertTrue(discovery.links.isEmpty)
+        XCTAssertTrue(discovery.issues.contains { $0.source == "api/src/main/resources/application.yml" && $0.failure.kind == .permissionDenied })
+        XCTAssertTrue(discovery.issues.contains { $0.source == "linked/src/main/resources/application.properties" && $0.failure.kind == .permissionDenied })
+    }
+
     func test_discovery_whenOversizedOrPermissionDenied_shouldReportFailure() async throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

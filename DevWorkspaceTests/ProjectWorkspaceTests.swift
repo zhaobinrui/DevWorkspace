@@ -4,6 +4,55 @@ import XCTest
 
 @MainActor
 final class ProjectWorkspaceTests: XCTestCase {
+    func test_add_whenRepositoryContainsBackendAndFrontend_shouldKeepSeparateProjectsAndSettings() async throws {
+        let repositoryRoot = try temporaryDirectory(name: "monorepo")
+        defer { try? FileManager.default.removeItem(at: repositoryRoot) }
+        let backend = repositoryRoot.appendingPathComponent("backend", isDirectory: true)
+        let frontend = repositoryRoot.appendingPathComponent("clients/web", isDirectory: true)
+        try FileManager.default.createDirectory(at: backend, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: frontend, withIntermediateDirectories: true)
+        try await LocalGitClient(runner: ReadOnlyCommandRunner()).run(at: repositoryRoot, arguments: ["init", "-b", "main"]).requireSuccess()
+        try Data(#"{"scripts":{"start":"node server.js"}}"#.utf8).write(to: backend.appendingPathComponent("package.json"))
+        try Data(#"{"scripts":{"dev":"vite --port 5173"}}"#.utf8).write(to: frontend.appendingPathComponent("package.json"))
+        try Data("services: {}\n".utf8).write(to: backend.appendingPathComponent("docker-compose.yml"))
+        try Data("services: {}\n".utf8).write(to: frontend.appendingPathComponent("compose.yaml"))
+
+        let repository = FileProjectCatalogRepository(fileURL: repositoryRoot.appendingPathComponent("settings/projects.json"))
+        let store = WorkspaceStore(provider: PreviewWorkspaceSnapshotProvider(), catalogRepository: repository)
+        await store.addProject(at: repositoryRoot)
+        await store.addProject(at: backend)
+        await store.addProject(at: frontend)
+        XCTAssertNil(store.projectIssue)
+        let canonicalRoots = [repositoryRoot, backend, frontend].map { $0.resolvingSymlinksInPath().standardizedFileURL }
+        XCTAssertEqual(store.catalog.projects.map(\.rootDirectory), canonicalRoots)
+        XCTAssertEqual(Set(store.catalog.projects.map(\.id)).count, 3)
+        XCTAssertEqual(store.project?.name, "web")
+
+        let backendProject = try XCTUnwrap(store.catalog.projects.first { $0.rootDirectory == canonicalRoots[1] })
+        let frontendProject = try XCTUnwrap(store.catalog.projects.first { $0.rootDirectory == canonicalRoots[2] })
+        var backendPreferences = store.preferences(for: backendProject.id)
+        backendPreferences.editor = ProjectEditor(bundleIdentifier: "com.jetbrains.intellij", applicationURL: URL(fileURLWithPath: "/Applications/IntelliJ IDEA.app"), name: "IntelliJ IDEA")
+        backendPreferences.profile = ProjectProfile(homebrewServices: ["redis"])
+        try store.savePreferences(backendPreferences)
+        var frontendPreferences = store.preferences(for: frontendProject.id)
+        frontendPreferences.editor = ProjectEditor(bundleIdentifier: "com.microsoft.VSCode", applicationURL: URL(fileURLWithPath: "/Applications/Visual Studio Code.app"), name: "VS Code")
+        frontendPreferences.profile = ProjectProfile(commands: [ProfileScriptCommand(role: .start, scriptName: "dev")])
+        try store.savePreferences(frontendPreferences)
+
+        let backendDiscovery = try await LocalProjectConfigurationReader().read(root: backend)
+        let frontendDiscovery = try await LocalProjectConfigurationReader().read(root: frontend)
+        XCTAssertEqual(backendDiscovery.dockerFiles, ["docker-compose.yml"])
+        XCTAssertEqual(backendDiscovery.packageScripts.map(\.name), ["start"])
+        XCTAssertEqual(frontendDiscovery.dockerFiles, ["compose.yaml"])
+        XCTAssertEqual(frontendDiscovery.packageScripts.map(\.name), ["dev"])
+
+        let restored = WorkspaceStore(provider: PreviewWorkspaceSnapshotProvider(), catalogRepository: repository)
+        XCTAssertEqual(restored.project?.id, frontendProject.id)
+        XCTAssertEqual(restored.catalog.projects.count, 3)
+        XCTAssertEqual(restored.preferences(for: backendProject.id), backendPreferences)
+        XCTAssertEqual(restored.preferences(for: frontendProject.id), frontendPreferences)
+    }
+
     func test_addAndSelect_whenRelaunched_shouldRestoreSelectedProjectWithoutDuplicates() async throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

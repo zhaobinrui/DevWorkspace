@@ -221,7 +221,7 @@
 "actions.unverified" = "Addresses are not network-tested. Open uses your default browser.";
 "actions.discovered" = "Project Configuration";
 "actions.scan" = "Scan Again";
-"actions.scan-scope" = "Reads root package.json and application configuration at the root or in src/main/resources. Static values only; no environment, profile or script evaluation.";
+"actions.scan-scope" = "Reads root package.json and application configuration at the root or in direct Maven/Gradle modules. Static values only; environment and profiles are not merged, so runtime ports may differ.";
 "actions.no-config" = "No links or Docker files found in supported configuration. You can add links manually.";
 "actions.stale" = "Configuration read is incomplete. Some entries may be from the previous successful scan.";
 "actions.review" = "Review & Save…";

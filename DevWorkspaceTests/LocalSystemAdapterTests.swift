@@ -184,16 +184,20 @@ final class LocalSystemAdapterTests: XCTestCase {
         } catch let failure as LocalReadFailure { XCTAssertEqual(failure.kind, .outputLimit) }
     }
 
-    func test_realGit_whenProjectHasSpacesAndUnbornBranch_shouldResolveRootAndReadStatus() async throws {
+    func test_realGit_whenNestedProjectSharesRepository_shouldKeepChosenRootAndScopeStatus() async throws {
         let directory = try temporaryDirectory(name: "project with spaces")
         defer { try? FileManager.default.removeItem(at: directory) }
         let client = LocalGitClient(runner: ReadOnlyCommandRunner())
         try await client.run(at: directory, arguments: ["init", "-b", "main"]).requireSuccess()
         let child = directory.appendingPathComponent("Sources")
+        let sibling = directory.appendingPathComponent("Frontend")
         try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sibling, withIntermediateDirectories: true)
         try Data("sample".utf8).write(to: child.appendingPathComponent("file\nname.txt"))
+        try Data("frontend".utf8).write(to: sibling.appendingPathComponent("web.txt"))
         let project = try await LocalProjectRootResolver().project(at: child)
-        XCTAssertEqual(project.rootDirectory, directory.standardizedFileURL.resolvingSymlinksInPath())
+        XCTAssertEqual(project.rootDirectory, child.standardizedFileURL.resolvingSymlinksInPath())
+        XCTAssertEqual(project.name, "Sources")
         let status = try await LocalGitStatusReader().status(for: project)
         XCTAssertEqual(status?.branch, "main")
         XCTAssertEqual(status?.changedFileCount, 1)
