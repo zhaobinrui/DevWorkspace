@@ -66,8 +66,13 @@ final class MenuBarController: NSObject {
 
         button.target = self
         button.action = #selector(statusItemPressed(_:))
-        // NSStatusItem 默认只处理主按钮；显式订阅右键释放，才能提供不依赖 Popover 的退出菜单。
-        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        if #available(macOS 27.0, *) {
+            // 系统的展开会话会在隐藏菜单栏收起时结束；旧版仍使用按钮点击切换。
+            statusItem.expandedInterfaceDelegate = self
+            button.sendAction(on: [.rightMouseUp])
+        } else {
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
         button.imagePosition = .imageLeading
     }
 
@@ -198,12 +203,12 @@ final class MenuBarController: NSObject {
         if popover.isShown {
             popover.performClose(nil)
         } else {
-            popover.show(
-                relativeTo: button.bounds,
-                of: button,
-                preferredEdge: .minY
-            )
+            showPopover(relativeTo: button)
         }
+    }
+
+    private func showPopover(relativeTo button: NSStatusBarButton) {
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
     private func showContextMenu(relativeTo button: NSStatusBarButton) {
@@ -423,7 +428,31 @@ extension MenuBarController: NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
+        if #available(macOS 27.0, *) {
+            // 由弹窗内操作或失焦关闭时，也要结束系统会话，避免菜单栏仍认为它展开。
+            statusItem.expandedInterfaceSession?.cancel()
+        }
         updateRefreshVisibility()
+    }
+}
+
+@available(macOS 27.0, *)
+// AppKit calls this UI delegate on the main thread, but its new protocol lacks actor isolation.
+extension MenuBarController: @preconcurrency NSStatusItemExpandedInterfaceDelegate {
+    func statusItem(
+        _ statusItem: NSStatusItem,
+        didBegin expandedInterfaceSession: NSStatusItemExpandedInterfaceSession
+    ) {
+        guard let button = statusItem.button else { return }
+        showPopover(relativeTo: button)
+    }
+
+    func statusItemDidEndExpandedInterfaceSession(
+        _ statusItem: NSStatusItem,
+        animated: Bool
+    ) {
+        // 点击菜单栏之外或隐藏菜单栏自动收起时，系统会结束会话。
+        popover.performClose(nil)
     }
 }
 

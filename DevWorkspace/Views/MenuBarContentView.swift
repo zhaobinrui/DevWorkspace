@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarContentView: View {
     @Environment(\.appLanguage) private var appLanguage
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.workspaceStaticRendering) private var staticRendering
 
     @Bindable var store: WorkspaceStore
     @Bindable var appearanceSettings: AppearanceSettings
@@ -27,6 +28,14 @@ struct MenuBarContentView: View {
                 workspaceSteps(snapshot)
             } else if store.project == nil {
                 Text("projects.empty-note").font(.callout).foregroundStyle(.secondary)
+            }
+
+            if let issue = store.projectIssue {
+                Text(issue.localized(in: appLanguage))
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, DevSpaceSpacing.small)
             }
 
             if let stateMessage {
@@ -102,13 +111,8 @@ struct MenuBarContentView: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: DevSpaceSpacing.xSmall) {
-                HStack(spacing: DevSpaceSpacing.small) {
-                    Text(store.project?.name ?? appLanguage.localized("projects.empty"))
-                        .font(.title3.bold())
-                        .lineLimit(1)
-
-                    statusLabel
-                }
+                projectSelector
+                statusLabel
 
                 if let snapshot, snapshot.origin == .preview, let git = snapshot.git {
                     Label(gitSummary(git), systemImage: "point.3.connected.trianglepath.dotted")
@@ -147,6 +151,53 @@ struct MenuBarContentView: View {
             .accessibilityIdentifier("menuBar.refresh")
         }
         .padding(.vertical, DevSpaceSpacing.medium)
+    }
+
+    @ViewBuilder
+    private var projectSelector: some View {
+        if store.catalog.projects.count > 1 {
+            if staticRendering {
+                // AppKit menu controls do not render into visual QA bitmaps; keep the same visible label.
+                projectSelectorLabel
+            } else {
+                Menu {
+                    ForEach(store.catalog.projects) { project in
+                        Button {
+                            store.selectProject(project.id)
+                        } label: {
+                            Label(
+                                "\(project.name) · \(project.rootDirectory.deletingLastPathComponent().lastPathComponent)",
+                                systemImage: store.project?.id == project.id ? "checkmark" : "folder"
+                            )
+                        }
+                        .help(project.rootDirectory.path)
+                        .accessibilityIdentifier("menuBar.project.\(project.id.rawValue)")
+                    }
+                } label: {
+                    projectSelectorLabel
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .disabled(store.catalogLoadBlocked)
+                .help(Text("projects.switch"))
+                .accessibilityIdentifier("menuBar.projectSelector")
+            }
+        } else {
+            Text(store.project?.name ?? appLanguage.localized("projects.empty"))
+                .font(.title3.bold())
+                .lineLimit(1)
+        }
+    }
+
+    private var projectSelectorLabel: some View {
+        HStack(spacing: DevSpaceSpacing.xSmall) {
+            Text(store.project?.name ?? appLanguage.localized("projects.empty"))
+                .font(.title3.bold())
+                .lineLimit(1)
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var statusLabel: some View {

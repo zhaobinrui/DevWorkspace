@@ -78,21 +78,46 @@ struct ProjectActionsView: View {
     private func quickActions(_ project: ProjectReference) -> some View {
         Group {
             if compact {
-                HStack {
-                    Button {
-                        Task { await actions.editor(project: project, store: store) }
-                    } label: {
-                        Label(store.preferences(for: project.id).editor?.name ?? language.localized("actions.choose-editor"),
-                              systemImage: "chevron.left.forwardslash.chevron.right").lineLimit(1)
-                    }.disabled(actions.isBusy || store.catalogLoadBlocked)
-                    Spacer(minLength: 0)
-                    WorkspaceOverflowMenu(title: "actions.more") {
-                        Button("actions.terminal") { Task { await actions.terminal(project.rootDirectory) } }
-                        Button("Finder") { actions.folder(project.rootDirectory) }
-                        Button("actions.copy-path") { actions.copy(project.rootDirectory.path) }
-                        Button("actions.change-editor") { Task { await actions.editor(project: project, store: store, change: true) } }
-                            .disabled(store.catalogLoadBlocked)
-                    }.disabled(actions.isBusy)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        let editor = store.preferences(for: project.id).editor
+                        Button {
+                            Task { await actions.editor(project: project, store: store) }
+                        } label: {
+                            HStack(spacing: 8) {
+                                applicationIcon(
+                                    InstalledProjectApplications.icon(for: editor?.applicationURL)
+                                        ?? editor.flatMap { InstalledProjectApplications.icon(bundleIdentifier: $0.bundleIdentifier) },
+                                    fallback: "chevron.left.forwardslash.chevron.right",
+                                    size: 22
+                                )
+                                Text(editor?.name ?? language.localized("actions.choose-editor"))
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .disabled(actions.isBusy || store.catalogLoadBlocked)
+                        .accessibilityIdentifier("menuBar.openEditor")
+                        WorkspaceOverflowMenu(title: "actions.more") {
+                            Button { Task { await actions.terminal(project.rootDirectory) } } label: {
+                                Label("actions.terminal", systemImage: "terminal")
+                            }
+                            Button { actions.folder(project.rootDirectory) } label: {
+                                Label("Finder", systemImage: "folder")
+                            }
+                            Button("actions.copy-path") { actions.copy(project.rootDirectory.path) }
+                            Button("actions.change-editor") { Task { await actions.editor(project: project, store: store, change: true) } }
+                                .disabled(store.catalogLoadBlocked)
+                        }.disabled(actions.isBusy)
+                    }
+                    Text("apps.common")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        ForEach(CommonProjectEditor.allCases) { kind in
+                            compactEditorButton(kind, project: project)
+                        }
+                    }
                 }
             } else {
                 VStack(alignment: .leading, spacing: 16) {
@@ -133,6 +158,34 @@ struct ProjectActionsView: View {
         }
     }
 
+    private func compactEditorButton(_ kind: CommonProjectEditor, project: ProjectReference) -> some View {
+        let installed = actions.installedEditors[kind]
+        let preferred = store.preferences(for: project.id).editor
+        let selected = preferred.map { kind.bundleIdentifiers.contains($0.bundleIdentifier) } ?? false
+        let title = kind == .intellijIDEA ? "IDEA" : kind.name
+
+        return Button {
+            Task { await actions.openCommonEditor(kind, project: project, store: store) }
+        } label: {
+            HStack(spacing: 6) {
+                applicationIcon(InstalledProjectApplications.icon(for: installed?.applicationURL),
+                                fallback: kind.symbol, size: 22)
+                Text(title).lineLimit(1)
+                Spacer(minLength: 0)
+                if selected {
+                    Image(systemName: "checkmark")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.bordered)
+        .disabled(installed == nil || actions.isBusy || store.catalogLoadBlocked)
+        .help(Text(installed == nil ? "apps.not-installed" : selected ? "apps.default" : "apps.use-default"))
+        .accessibilityIdentifier("menuBar.commonEditor.\(kind.rawValue)")
+    }
+
     private func copyAndEditorMenu(_ project: ProjectReference) -> some View {
         WorkspaceOverflowMenu(title: "actions.more") {
             Button("actions.change-editor") { Task { await actions.editor(project: project, store: store, change: true) } }
@@ -169,13 +222,13 @@ struct ProjectActionsView: View {
         }.disabled(actions.isBusy)
     }
 
-    private func applicationIcon(_ icon: NSImage?, fallback: String) -> some View {
+    private func applicationIcon(_ icon: NSImage?, fallback: String, size: CGFloat = 32) -> some View {
         Group {
             // Some system icons carry HDR data. Keep utility icons at standard range so they
             // don't raise the whole workspace's export range and dim ordinary interface colors.
-            if let icon { Image(nsImage: icon).resizable().allowedDynamicRange(.standard).interpolation(.high) }
-            else { Image(systemName: fallback).resizable().scaledToFit().padding(6).foregroundStyle(Color.accentColor) }
-        }.frame(width: 32, height: 32)
+            if let icon { Image(nsImage: icon).resizable().interpolation(.high).scaledToFit().allowedDynamicRange(.standard) }
+            else { Image(systemName: fallback).resizable().scaledToFit().padding(size * 0.1875).foregroundStyle(Color.accentColor) }
+        }.frame(width: size, height: size)
     }
 
     private func applicationTile(_ title: String, subtitle: LocalizedStringKey, icon: NSImage?, symbol: String,

@@ -23,6 +23,7 @@
 "projects.empty" = "尚未选择项目";
 "projects.empty-note" = "添加本地目录，查看 Git 状态和项目端口。不会执行仓库中的命令。";
 "projects.selected" = "当前项目";
+"projects.switch" = "切换工作区项目";
 "projects.remove" = "移除项目";
 "projects.remove-confirm" = "从 DevWorkspace 移除此项目？";
 "projects.remove-note" = "仅移除已保存的项目记录及进程归属确认，项目文件仍保留在磁盘上。";

@@ -188,6 +188,7 @@ final class UIRenderingTests: XCTestCase {
                         \.colorScheme,
                         skin == .crystalAir ? .light : .dark
                     )
+                    .environment(\.workspaceStaticRendering, true)
                 },
                 size: NSSize(width: 520, height: 680),
                 destination: outputDirectory
@@ -198,6 +199,17 @@ final class UIRenderingTests: XCTestCase {
         try writeComparisons(
             outputDirectory: outputDirectory,
             skins: Set(skins)
+        )
+
+        try await render(
+            AppLanguageRootView(settings: languageSettings) {
+                ProjectActionsView(store: store, compact: true)
+                    .environment(\.workspaceStaticRendering, true)
+                    .frame(width: DevSpaceLayout.menuBarWidth)
+                    .background(Color.black)
+            },
+            size: NSSize(width: DevSpaceLayout.menuBarWidth, height: 180),
+            destination: outputDirectory.appending(path: "menu-compact-actions.png")
         )
 
         let appearanceSettings = AppearanceSettings(userDefaults: defaults)
@@ -262,9 +274,26 @@ final class UIRenderingTests: XCTestCase {
             ),
             name: "ECM API"
         )
+        let sibling = ProjectReference(
+            identity: try LocalProjectIdentityResolver().resolve(
+                rootDirectory: URL(fileURLWithPath: "/private/tmp/devworkspace-ui-project/frontend", isDirectory: true),
+                declaredMetadataID: UUID(uuidString: "00000000-0000-0000-0000-000000000100")!
+            ),
+            name: "frontend"
+        )
+        let preferredEditor = ProjectEditor(
+            bundleIdentifier: "com.jetbrains.intellij",
+            applicationURL: URL(fileURLWithPath: "/Applications/IntelliJ IDEA.app"),
+            name: "IntelliJ IDEA"
+        )
+        let catalog = ProjectCatalog(
+            projects: [project, sibling],
+            selectedID: project.id,
+            preferences: [ProjectPreferences(projectID: project.id, editor: preferredEditor)]
+        )
         return WorkspaceStore(
-            project: project,
-            provider: PreviewWorkspaceSnapshotProvider()
+            provider: PreviewWorkspaceSnapshotProvider(),
+            catalogRepository: DashboardCaptureCatalog(catalog: catalog)
         )
     }
 

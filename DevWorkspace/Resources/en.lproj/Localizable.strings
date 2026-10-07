@@ -23,6 +23,7 @@
 "projects.empty" = "No project selected";
 "projects.empty-note" = "Add a local directory to view its Git status and ports. Repository commands are never run.";
 "projects.selected" = "Current project";
+"projects.switch" = "Switch workspace project";
 "projects.remove" = "Remove Project";
 "projects.remove-confirm" = "Remove this project from DevWorkspace?";
 "projects.remove-note" = "Only the saved project entry and its process bindings are removed. Project files remain on disk.";
