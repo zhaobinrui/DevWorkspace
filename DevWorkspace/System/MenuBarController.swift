@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import os
 import SwiftUI
 
 enum MenuBarClickAction: Equatable, Sendable {
@@ -22,6 +23,16 @@ final class MenuBarController: NSObject {
     private let refreshController: WorkspaceRefreshController
     private let statusItem: NSStatusItem
     private let popover: NSPopover
+    private let logger = Logger(
+        subsystem: DevSpaceProduct.workspace.bundleIdentifier,
+        category: "MenuBar"
+    )
+    private var localClickMonitor: Any?
+    private var globalClickMonitor: Any?
+    private var appDeactivationObserver: NSObjectProtocol?
+    private var sessionMonitor: Task<Void, Never>?
+    private var openingEventTimestamp: TimeInterval = 0
+    private var suppressExpansionUntil: TimeInterval = 0
 
     // 关闭窗口后继续持有控制器，既避免 AppKit 释放窗口，也保留同一 SwiftUI 状态树供再次打开。
     private var workspaceWindowController: NSWindowController?
@@ -131,6 +142,7 @@ final class MenuBarController: NSObject {
     func stopMonitoring() {
         monitoringEnabled = false
         refreshController.stop()
+        closePopover()
     }
 
     private func synchronizeSelectedProject() {
@@ -235,6 +247,95 @@ final class MenuBarController: NSObject {
             statusItem.expandedInterfaceSession?.cancel()
         }
         popover.close()
+    }
+
+    private func statusButtonContains(_ event: NSEvent) -> Bool {
+        guard let button = statusItem.button,
+              let window = button.window,
+              event.window === window else { return false }
+        return button.bounds.contains(button.convert(event.locationInWindow, from: nil))
+    }
+
+    private func startExpandedInterfaceMonitoring() {
+        guard #available(macOS 27.0, *) else { return }
+        stopExpandedInterfaceMonitoring()
+        // The opening event can belong to the menu bar process, so currentEvent
+        // may still be an older app event when AppKit invokes this delegate.
+        openingEventTimestamp = max(
+            NSApp.currentEvent?.timestamp ?? 0,
+            ProcessInfo.processInfo.systemUptime
+        )
+
+        // A second press can reach our status button without ending AppKit's expanded
+        // session. Intercept the down event before AppKit can treat it as a new open.
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) {
+            [weak self] event in
+            let shouldConsume = MainActor.assumeIsolated {
+                guard let self, self.popover.isShown,
+                      self.statusButtonContains(event) else { return false }
+                self.suppressExpansionUntil = ProcessInfo.processInfo.systemUptime + 0.4
+                self.logger.debug("Closing expanded interface after status item click")
+                self.closePopover()
+                return true
+            }
+            return shouldConsume ? nil : event
+        }
+
+        // Menu bar clicks can be delivered by the system's menu bar process rather
+        // than this app. A global mouse monitor covers those clicks and ordinary
+        // clicks in other apps without consuming their events.
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] event in
+            let timestamp = event.timestamp
+            Task { @MainActor [weak self] in
+                guard let self, self.popover.isShown,
+                      timestamp > self.openingEventTimestamp else { return }
+                self.suppressExpansionUntil = ProcessInfo.processInfo.systemUptime + 0.4
+                self.logger.debug("Closing expanded interface after external click")
+                self.closePopover()
+            }
+        }
+
+        appDeactivationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: NSApp,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.popover.isShown else { return }
+                self.logger.debug("Closing expanded interface after app deactivation")
+                self.closePopover()
+            }
+        }
+
+        // macOS 27 can keep the status item's window marked visible after its
+        // overflow area collapses. Check the session itself while the popover is up.
+        sessionMonitor = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .milliseconds(250)) }
+                catch { return }
+                guard let self, self.popover.isShown else { return }
+                if self.statusItem.expandedInterfaceSession == nil {
+                    self.logger.debug("Closing expanded interface after session disappeared")
+                    self.popover.close()
+                    return
+                }
+            }
+        }
+    }
+
+    private func stopExpandedInterfaceMonitoring() {
+        if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
+        if let globalClickMonitor { NSEvent.removeMonitor(globalClickMonitor) }
+        if let appDeactivationObserver {
+            NotificationCenter.default.removeObserver(appDeactivationObserver)
+        }
+        localClickMonitor = nil
+        globalClickMonitor = nil
+        appDeactivationObserver = nil
+        sessionMonitor?.cancel()
+        sessionMonitor = nil
     }
 
     private func showContextMenu(relativeTo button: NSStatusBarButton) {
@@ -466,6 +567,7 @@ extension MenuBarController: NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
+        stopExpandedInterfaceMonitoring()
         if #available(macOS 27.0, *) {
             // 弹窗内操作主动关闭时，系统也必须结束当前菜单栏展开会话。
             statusItem.expandedInterfaceSession?.cancel()
@@ -481,6 +583,10 @@ extension MenuBarController: @preconcurrency NSStatusItemExpandedInterfaceDelega
         _ statusItem: NSStatusItem,
         didBegin expandedInterfaceSession: NSStatusItemExpandedInterfaceSession
     ) {
+        if ProcessInfo.processInfo.systemUptime < suppressExpansionUntil {
+            expandedInterfaceSession.cancel()
+            return
+        }
         if NSApp.currentEvent?.type == .rightMouseDown
             || NSApp.currentEvent?.type == .rightMouseUp {
             expandedInterfaceSession.cancel()
@@ -494,7 +600,13 @@ extension MenuBarController: @preconcurrency NSStatusItemExpandedInterfaceDelega
         if popover.isShown {
             expandedInterfaceSession.cancel()
         } else {
+            logger.debug("Beginning expanded interface session")
             showPopover(relativeTo: button)
+            if popover.isShown {
+                startExpandedInterfaceMonitoring()
+            } else {
+                expandedInterfaceSession.cancel()
+            }
         }
     }
 
@@ -503,6 +615,7 @@ extension MenuBarController: @preconcurrency NSStatusItemExpandedInterfaceDelega
         animated: Bool
     ) {
         // 包括隐藏菜单栏收起在内，所有系统结束路径都必须移除附着的弹窗。
+        logger.debug("Ending expanded interface session")
         popover.close()
     }
 }
