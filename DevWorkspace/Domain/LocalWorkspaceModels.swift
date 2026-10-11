@@ -2,7 +2,8 @@ import Foundation
 
 enum LocalFailureKind: String, Codable, Sendable {
     case permissionDenied, timedOut, unavailable, invalidOutput, outputLimit
-    case invalidDirectory, identityConflict, processChanged, corruptStorage, unsupportedVersion
+    case invalidDirectory, identityConflict, processChanged, corruptStorage, unsupportedVersion, activeManagedProcess
+    case operationInProgress
     case dockerNotInstalled, dockerComposeUnavailable, dockerDaemonUnavailable, dockerRemoteContext, dockerAttributionUncertain
 }
 
@@ -149,13 +150,17 @@ struct ProjectCatalog: Codable, Equatable, Sendable {
     var selectedID: ProjectIdentifier? = nil
     var bindings: [ProcessProjectBinding] = []
     var preferences: [ProjectPreferences] = []
+    var managedProcesses: [ManagedProjectProcess] = []
+    var managedComposeRuns: [ManagedComposeRun] = []
 
-    enum CodingKeys: String, CodingKey { case version, projects, selectedID, bindings, preferences }
+    enum CodingKeys: String, CodingKey { case version, projects, selectedID, bindings, preferences, managedProcesses, managedComposeRuns }
 
     init(version: Int = 1, projects: [ProjectReference] = [], selectedID: ProjectIdentifier? = nil,
-         bindings: [ProcessProjectBinding] = [], preferences: [ProjectPreferences] = []) {
+         bindings: [ProcessProjectBinding] = [], preferences: [ProjectPreferences] = [],
+         managedProcesses: [ManagedProjectProcess] = [], managedComposeRuns: [ManagedComposeRun] = []) {
         self.version = version; self.projects = projects; self.selectedID = selectedID
-        self.bindings = bindings; self.preferences = preferences
+        self.bindings = bindings; self.preferences = preferences; self.managedProcesses = managedProcesses
+        self.managedComposeRuns = managedComposeRuns
     }
 
     init(from decoder: any Decoder) throws {
@@ -166,5 +171,7 @@ struct ProjectCatalog: Codable, Equatable, Sendable {
         bindings = try values.decode([ProcessProjectBinding].self, forKey: .bindings)
         // Additive metadata keeps existing installations readable without rewriting their projects.
         preferences = try values.decodeIfPresent([ProjectPreferences].self, forKey: .preferences) ?? []
+        managedProcesses = try values.decodeIfPresent([ManagedProjectProcess].self, forKey: .managedProcesses) ?? []
+        managedComposeRuns = try values.decodeIfPresent([ManagedComposeRun].self, forKey: .managedComposeRuns) ?? []
     }
 }

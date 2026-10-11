@@ -39,6 +39,31 @@ struct FileProjectCatalogRepository: ProjectCatalogPersisting {
                       && preference.links.allSatisfy { ProjectURLPolicy.validated($0.url.absoluteString) != nil }
                       && (preference.profile?.isValid() ?? true)
                   }) else { throw LocalReadFailure(kind: .corruptStorage) }
+            guard Set(catalog.managedProcesses.map(\.projectID)).count == catalog.managedProcesses.count,
+                  catalog.managedProcesses.allSatisfy({ record in
+                      catalog.projects.contains { project in
+                          project.id == record.projectID
+                            && project.rootDirectory.standardizedFileURL.resolvingSymlinksInPath()
+                              == record.rootDirectory.standardizedFileURL.resolvingSymlinksInPath()
+                      }
+                      && ProjectProfile.validScriptName(record.scriptName)
+                      && record.identity.pid > 0 && record.identity.executablePath.hasPrefix("/")
+                  }) else { throw LocalReadFailure(kind: .corruptStorage) }
+            guard Set(catalog.managedComposeRuns.map(\.projectID)).count == catalog.managedComposeRuns.count,
+                  catalog.managedComposeRuns.allSatisfy({ run in
+                      catalog.projects.contains { project in
+                          project.id == run.projectID
+                            && project.rootDirectory.standardizedFileURL.resolvingSymlinksInPath()
+                              == run.rootDirectory.standardizedFileURL.resolvingSymlinksInPath()
+                      }
+                      && ProjectProfile.validComposeName(run.configurationName)
+                      && run.configurationDigest.count == 64
+                      && !run.containerIDs.isEmpty
+                      && Set(run.containerIDs).count == run.containerIDs.count
+                      && run.containerIDs.allSatisfy { id in id.count == 64 && id.utf8.allSatisfy { byte in
+                          (48...57).contains(byte) || (97...102).contains(byte)
+                      } }
+                  }) else { throw LocalReadFailure(kind: .corruptStorage) }
             return catalog
         } catch let failure as LocalReadFailure { throw failure }
         catch { throw LocalReadFailure(kind: .corruptStorage) }

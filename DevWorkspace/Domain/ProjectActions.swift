@@ -47,6 +47,9 @@ struct ProjectDiscovery: Codable, Equatable, Sendable {
     var dockerFiles: [String] = []
     var packageScripts: [DiscoveredPackageScript] = []
     var packageDigest: String? = nil
+    var composeConfigurationName: String? = nil
+    var composeDigest: String? = nil
+    var composeContents: String? = nil
     var issues: [ConfigurationIssue] = []
 }
 

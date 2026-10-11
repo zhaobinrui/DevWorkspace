@@ -57,7 +57,10 @@ struct ProjectProfileView: View {
                         .disabled(availableScripts.isEmpty || store.catalogLoadBlocked)
                         if command != nil {
                             Button("profile.remove", role: .destructive) {
-                                updateDraft(project) { $0.commands.removeAll { $0.role == role } }
+                                updateDraft(project) {
+                                    $0.commands.removeAll { $0.role == role }
+                                    if role == .start { $0.processReadinessURL = nil }
+                                }
                             }.disabled(store.catalogLoadBlocked)
                         }
                     }
@@ -68,6 +71,23 @@ struct ProjectProfileView: View {
                 Divider()
                 Text("profile.homebrew").font(.subheadline.weight(.semibold))
                 Text("profile.homebrew-note").font(.caption).foregroundStyle(.secondary)
+                if let reading = store.homebrewServices {
+                    if let failure = reading.failure {
+                        Label(failure.localized(in: language), systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(.orange)
+                        Text("profile.homebrew-last-trusted")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        Text(reading.attemptedAt, format: .dateTime.month().day().hour().minute().second())
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    if let checkedAt = reading.checkedAt {
+                        HStack(spacing: 4) {
+                            Text(LocalizedStringKey(reading.failure == nil
+                                ? "workspace.snapshot.updated-at" : "workspace.snapshot.last-trusted-at"))
+                            Text(checkedAt, format: .dateTime.month().day().hour().minute().second())
+                        }.font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
                 HStack {
                     if staticRendering {
                         Text("profile.homebrew-placeholder").foregroundStyle(.secondary)
@@ -85,22 +105,132 @@ struct ProjectProfileView: View {
                 ForEach(profile.homebrewServices, id: \.self) { name in
                     HStack {
                         Text(name).font(.caption.monospaced())
+                        if let status = store.homebrewServices?.value?.first(where: { $0.name == name }) {
+                            Text(LocalizedStringKey("profile.homebrew-state.\(status.state.rawValue)"))
+                                .font(.caption).foregroundStyle(status.state == .running ? .green : .secondary)
+                            if let pid = status.pid { Text("PID \(pid)").font(.caption2).foregroundStyle(.secondary) }
+                        } else {
+                            Text("profile.homebrew-state.unread").font(.caption).foregroundStyle(.secondary)
+                        }
                         Spacer()
                         Button("profile.remove", role: .destructive) {
                             updateDraft(project) { $0.homebrewServices.removeAll { $0 == name } }
                         }.disabled(store.catalogLoadBlocked)
                     }
                 }
+                if !profile.homebrewServices.isEmpty {
+                    Button("profile.homebrew-refresh") {
+                        Task { await store.refreshHomebrewServices() }
+                    }.disabled(store.isRefreshingHomebrewServices)
+                }
+                Divider()
+                HStack {
+                    Text("profile.compose-title").font(.subheadline.weight(.semibold))
+                    Spacer()
+                    if let name = profile.composeConfigurationName {
+                        Text(name).font(.caption.monospaced())
+                        Button("profile.remove", role: .destructive) {
+                            updateDraft(project) {
+                                $0.composeConfigurationName = nil
+                                $0.composeReadinessURL = nil
+                            }
+                        }
+                    } else if let name = store.discovery?.value?.composeConfigurationName {
+                        Button("profile.compose-add") {
+                            updateDraft(project) { $0.composeConfigurationName = name }
+                        }.disabled(store.discovery?.failure != nil)
+                    } else {
+                        Text("profile.compose-unavailable").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Text("profile.compose-note").font(.caption).foregroundStyle(.secondary)
                 Text(String(format: language.localized("profile.urls"), store.preferences(for: project.id).links.count))
                     .font(.caption).foregroundStyle(.secondary)
                 if !profile.isEmpty {
                     Button("profile.review-trust") {
                         trustReview = TrustReview(projectID: project.id, root: project.rootDirectory,
                             profile: profile, packageDigest: store.discovery?.value?.packageDigest,
+                            composeDigest: store.discovery?.value?.composeDigest,
+                            composeContents: store.discovery?.value?.composeContents,
                             scripts: availableScripts)
                     }
                     .disabled(store.catalogLoadBlocked || !canReview(profile))
                     .accessibilityIdentifier("workspace.reviewProfileTrust")
+                }
+                if let command = profile.commands.first(where: { $0.role == .start }) ??
+                    store.managedProcess.map({ ProfileScriptCommand(role: .start, scriptName: $0.scriptName) }) {
+                    Divider()
+                    Text("profile.execution-title").font(.subheadline.weight(.semibold))
+                    Text("profile.execution-note").font(.caption).foregroundStyle(.secondary)
+                    readinessSelection(project: project, compose: false, selected: profile.processReadinessURL)
+                    if let record = store.managedProcess {
+                        Text("npm run \(record.scriptName) · PID \(record.identity.pid)")
+                            .font(.caption.monospaced()).textSelection(.enabled)
+                        Text(record.identity.executablePath).font(.caption2).foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    } else {
+                        Text("npm run \(command.scriptName)").font(.caption.monospaced())
+                    }
+                    Text(LocalizedStringKey(phaseKey(store.executionPhase)))
+                        .font(.caption).foregroundStyle(.secondary)
+                    if case let .failed(failure) = store.executionPhase {
+                        Label(LocalizedStringKey("profile.execution-error.\(failure.rawValue)"),
+                              systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
+                    HStack {
+                        if store.managedProcess == nil {
+                            Button("profile.execution-start") { store.startSelectedProject() }
+                                .disabled(store.profileTrustStatus(for: project) != .trusted
+                                    || executionIsBusy || composeIsBusy || store.catalogLoadBlocked)
+                        } else {
+                            Button("profile.execution-stop") { store.stopSelectedProject() }
+                                .disabled(executionIsBusy || composeIsBusy)
+                            if case .failed(.readinessTimedOut) = store.executionPhase {
+                                Button("profile.execution-retry") { store.retryReadiness() }
+                                    .disabled(executionIsBusy || composeIsBusy)
+                            }
+                        }
+                        if executionIsBusy && store.executionPhase != .stopping {
+                            Button("projects.cancel") { store.cancelSelectedProjectStart() }
+                        }
+                    }
+                }
+                if profile.composeConfigurationName != nil || store.managedComposeRun != nil {
+                    Divider()
+                    Text("profile.compose-control-title").font(.subheadline.weight(.semibold))
+                    Text("profile.compose-control-note").font(.caption).foregroundStyle(.secondary)
+                    if profile.composeConfigurationName != nil {
+                        readinessSelection(project: project, compose: true, selected: profile.composeReadinessURL)
+                    }
+                    if let run = store.managedComposeRun {
+                        Text(String(format: language.localized("profile.compose-managed-count"), run.containerIDs.count))
+                            .font(.caption)
+                    }
+                    Text(LocalizedStringKey(composePhaseKey(store.composePhase)))
+                        .font(.caption).foregroundStyle(.secondary)
+                    if case let .failed(failure) = store.composePhase {
+                        Label(LocalizedStringKey("profile.compose-error.\(failure.rawValue)"),
+                              systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
+                    HStack {
+                        if store.managedComposeRun == nil {
+                            Button("profile.compose-start") { store.startSelectedCompose() }
+                                .disabled(store.profileTrustStatus(for: project) != .trusted
+                                    || composeIsBusy || executionIsBusy || store.catalogLoadBlocked)
+                        } else {
+                            Button("profile.compose-stop") { store.stopSelectedCompose() }
+                                .disabled(composeIsBusy || executionIsBusy)
+                            if case .failed(.readinessTimedOut) = store.composePhase {
+                                Button("profile.execution-retry") { store.retryComposeReadiness() }
+                                    .disabled(composeIsBusy || executionIsBusy)
+                            }
+                        }
+                        if composeIsBusy && store.composePhase != .stopping {
+                            Button("projects.cancel") { store.cancelSelectedComposeStart() }
+                        }
+                    }
                 }
                 if let errorText { Text(errorText).font(.caption).foregroundStyle(.orange) }
             }
@@ -142,6 +272,20 @@ struct ProjectProfileView: View {
                                 Text(review.profile.homebrewServices.joined(separator: ", "))
                                     .font(.caption.monospaced()).textSelection(.enabled)
                             }
+                            if let name = review.profile.composeConfigurationName {
+                                Text("profile.compose-title").font(.subheadline.weight(.semibold))
+                                Text(name).font(.caption.monospaced())
+                                Text(review.composeContents ?? "").font(.caption.monospaced())
+                                    .textSelection(.enabled)
+                            }
+                            if let url = review.profile.processReadinessURL {
+                                Text("profile.execution-title").font(.subheadline.weight(.semibold))
+                                Text(url.absoluteString).font(.caption.monospaced()).textSelection(.enabled)
+                            }
+                            if let url = review.profile.composeReadinessURL {
+                                Text("profile.compose-control-title").font(.subheadline.weight(.semibold))
+                                Text(url.absoluteString).font(.caption.monospaced()).textSelection(.enabled)
+                            }
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }.frame(maxHeight: 380)
                     Text("profile.preview-warning").font(.caption).foregroundStyle(.secondary)
@@ -154,7 +298,8 @@ struct ProjectProfileView: View {
                                 defer { isTrusting = false }
                                 do {
                                     try await store.trustProfile(for: review.projectID, reviewed: review.profile,
-                                                                 packageDigest: review.packageDigest)
+                                                                 packageDigest: review.packageDigest,
+                                                                 composeDigest: review.composeDigest)
                                     errorText = nil
                                     trustReview = nil
                                 } catch { errorText = message(for: error); trustReview = nil }
@@ -165,6 +310,9 @@ struct ProjectProfileView: View {
                     }
                 }.padding(24).frame(width: 600)
             }
+            .task(id: profile.homebrewServices) {
+                if !staticRendering { await store.refreshHomebrewServices() }
+            }
         }
     }
 
@@ -173,12 +321,97 @@ struct ProjectProfileView: View {
         return store.discovery?.value?.packageScripts ?? []
     }
 
+    private var localReadinessLinks: [ProjectLink] {
+        guard let project = store.project else { return [] }
+        return store.preferences(for: project.id).links.filter {
+            ProjectProfile.validReadinessURL($0.url)
+        }
+    }
+
+    private func readinessSelection(project: ProjectReference, compose: Bool, selected: URL?) -> some View {
+        HStack(spacing: 8) {
+            Text("profile.readiness-url").font(.caption)
+            if let url = selected ?? localReadinessLinks.first?.url {
+                Text(url.absoluteString).font(.caption.monospaced()).textSelection(.enabled)
+                    .lineLimit(1).truncationMode(.middle)
+            } else {
+                Text("profile.readiness-none").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Menu("profile.choose-readiness") {
+                Button("profile.readiness-auto") {
+                    updateDraft(project) {
+                        if compose { $0.composeReadinessURL = nil }
+                        else { $0.processReadinessURL = nil }
+                    }
+                }
+                ForEach(localReadinessLinks) { link in
+                    Button("\(link.name) · \(link.url.absoluteString)") {
+                        updateDraft(project) {
+                            if compose { $0.composeReadinessURL = link.url }
+                            else { $0.processReadinessURL = link.url }
+                        }
+                    }
+                }
+            }.disabled(store.catalogLoadBlocked)
+        }
+    }
+
+    private var executionIsBusy: Bool {
+        switch store.executionPhase {
+        case .validating, .launching, .checkingReadiness, .stopping: true
+        default: false
+        }
+    }
+
+    private func phaseKey(_ phase: ProjectExecutionPhase) -> String {
+        switch phase {
+        case .idle: "profile.execution.idle"
+        case .validating: "profile.execution.validating"
+        case .launching: "profile.execution.launching"
+        case .checkingReadiness: "profile.execution.checking"
+        case .ready: "profile.execution.ready"
+        case .stopping: "profile.execution.stopping"
+        case .stopped: "profile.execution.stopped"
+        case .cancelled: "profile.execution.cancelled"
+        case .recoveryRequired: "profile.execution.recovery"
+        case .failed: "profile.execution.failed"
+        }
+    }
+
+    private var composeIsBusy: Bool {
+        switch store.composePhase {
+        case .validating, .starting, .checkingReadiness, .stopping: true
+        default: false
+        }
+    }
+
+    private func composePhaseKey(_ phase: ComposeExecutionPhase) -> String {
+        switch phase {
+        case .idle: "profile.compose.idle"
+        case .validating: "profile.compose.validating"
+        case .starting: "profile.compose.starting"
+        case .checkingReadiness: "profile.compose.checking"
+        case .ready: "profile.compose.ready"
+        case .stopping: "profile.compose.stopping"
+        case .stopped: "profile.compose.stopped"
+        case .cancelled: "profile.compose.cancelled"
+        case .recoveryRequired: "profile.compose.recovery"
+        case .failed: "profile.compose.failed"
+        }
+    }
+
     private func canReview(_ profile: ProjectProfile) -> Bool {
-        profile.commands.isEmpty || (store.discovery?.failure == nil
+        let commandsReady = profile.commands.isEmpty || (store.discovery?.failure == nil
             && store.discovery?.value?.packageDigest != nil
             && profile.commands.allSatisfy { command in
                 availableScripts.contains(where: { $0.name == command.scriptName })
             })
+        let composeReady = profile.composeConfigurationName == nil
+            || (store.discovery?.failure == nil
+                && store.discovery?.value?.composeConfigurationName == profile.composeConfigurationName
+                && store.discovery?.value?.composeDigest != nil)
+        return commandsReady && composeReady
     }
 
     private func updateDraft(_ project: ProjectReference, change: (inout ProjectProfile) -> Void) {
@@ -254,5 +487,7 @@ private struct TrustReview: Identifiable {
     let root: URL
     let profile: ProjectProfile
     let packageDigest: String?
+    let composeDigest: String?
+    let composeContents: String?
     let scripts: [DiscoveredPackageScript]
 }

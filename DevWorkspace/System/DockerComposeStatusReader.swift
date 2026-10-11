@@ -35,21 +35,27 @@ struct LocalDockerComposeStatusReader: DockerComposeStatusReading {
         let output = try await runner.run(LocalCommand(executable: docker, arguments: arguments,
                                                        directory: root, timeout: 8, outputLimit: 512 * 1_024))
         guard output.exitCode == 0 else { throw Self.failure(for: output) }
-        let containers = try Self.parse(output.standardOutput)
+        var containers = try Self.parse(output.standardOutput)
         if !containers.isEmpty {
             let inspectArguments = ["--host", host, "inspect", "--type", "container", "--format",
                                     "{{.Id}} {{json .Config.Labels}}"] + containers.map(\.id)
             let inspect = try await runner.run(LocalCommand(executable: docker, arguments: inspectArguments,
                                                             timeout: 8, outputLimit: 256 * 1_024))
             guard inspect.exitCode == 0 else { throw Self.failure(for: inspect) }
-            try Self.verifyAttribution(inspect.standardOutput, containers: containers, root: root,
-                                       configurationName: name)
+            let fullIDs = try Self.verifyAttribution(inspect.standardOutput, containers: containers, root: root,
+                                                     configurationName: name)
+            // Keep complete, label-verified IDs for later exact-target stop operations.
+            containers = zip(containers, fullIDs).map { container, fullID in
+                ComposeContainer(id: fullID, projectName: container.projectName,
+                                 serviceName: container.serviceName, state: container.state,
+                                 health: container.health, ports: container.ports)
+            }
         }
         let projectName = containers.first?.projectName
         return ComposeProjectStatus(configurationName: name, projectName: projectName, containers: containers)
     }
 
-    private static func installedDocker() -> URL? {
+    static func installedDocker() -> URL? {
         // These are fixed installation locations, never a PATH lookup in an untrusted repository.
         ["/usr/local/bin/docker", "/opt/homebrew/bin/docker",
          "/Applications/Docker.app/Contents/Resources/bin/docker"]
@@ -126,13 +132,14 @@ struct LocalDockerComposeStatusReader: DockerComposeStatusReading {
     }
 
     static func verifyAttribution(_ data: Data, containers: [ComposeContainer], root: URL,
-                                  configurationName: String) throws {
+                                  configurationName: String) throws -> [String] {
         guard let text = String(data: data, encoding: .utf8) else { throw LocalReadFailure(kind: .invalidOutput) }
         let rows = text.split(whereSeparator: \.isNewline)
         guard rows.count == containers.count else { throw LocalReadFailure(kind: .dockerAttributionUncertain) }
         let canonicalRoot = root.standardizedFileURL.resolvingSymlinksInPath().path
         let canonicalConfig = root.appendingPathComponent(configurationName).standardizedFileURL
             .resolvingSymlinksInPath().path
+        var fullIDs: [String] = []
         for (index, row) in rows.enumerated() {
             guard let separator = row.firstIndex(of: " "),
                   let labels = try? JSONSerialization.jsonObject(with: Data(row[row.index(after: separator)...].utf8)) as? [String: String] else {
@@ -163,7 +170,9 @@ struct LocalDockerComposeStatusReader: DockerComposeStatusReading {
                   directoryMatches == true || fileMatches == true else {
                 throw LocalReadFailure(kind: .dockerAttributionUncertain)
             }
+            fullIDs.append(id)
         }
+        return fullIDs
     }
 
     static func failure(for output: LocalCommandOutput) -> LocalReadFailure {

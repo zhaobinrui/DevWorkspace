@@ -240,6 +240,7 @@ final class WorkspaceRefreshController {
         )
 
         await store.refresh(forceProcessRefresh: trigger == .userInitiated || trigger == .scheduled)
+        if !Task.isCancelled { await store.refreshHomebrewServices() }
 
         let elapsed = startedAt.duration(to: clock.now)
         let duration = elapsed.timeInterval

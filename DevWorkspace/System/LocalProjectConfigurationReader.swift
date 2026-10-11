@@ -32,10 +32,20 @@ struct LocalProjectConfigurationReader: ProjectConfigurationReading {
         for name in names {
             try Task.checkCancellation()
             do {
-                guard let file = try readFile(name, root: canonical, content: !dockerNames.contains(name)) else { continue }
+                guard let file = try readFile(name, root: canonical,
+                    content: !["Dockerfile", "dockerfile"].contains(name)) else { continue }
                 if dockerNames.contains(name) {
                     // APFS is usually case-insensitive; Dockerfile and dockerfile may be the same inode.
                     if dockerIdentities.insert(file.identity).inserted { result.dockerFiles.append(name) }
+                    if ProjectProfile.validComposeName(name), result.composeConfigurationName == nil {
+                        guard let contents = String(data: file.data, encoding: .utf8) else {
+                            throw LocalReadFailure(kind: .invalidOutput)
+                        }
+                        result.composeConfigurationName = name
+                        result.composeDigest = SHA256.hash(data: file.data)
+                            .map { String(format: "%02x", $0) }.joined()
+                        result.composeContents = contents
+                    }
                     continue
                 }
                 let parsed = try parse(data: file.data, source: name)
