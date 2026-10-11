@@ -181,7 +181,7 @@ final class WorkspaceRefreshController {
         }
 
         let interval = policy.interval(
-            for: store.state,
+            for: store.presentationState,
             visibility: .visible
         )
         return Date().timeIntervalSince(lastRefreshAt) >= interval
@@ -208,7 +208,7 @@ final class WorkspaceRefreshController {
     private func runScheduledLoop() async {
         while isRunning, !Task.isCancelled {
             let interval = max(
-                policy.interval(for: store.state, visibility: visibility),
+                policy.interval(for: store.presentationState, visibility: visibility),
                 0.01
             )
             metrics.scheduledInterval = interval

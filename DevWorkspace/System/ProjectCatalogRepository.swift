@@ -46,7 +46,10 @@ struct FileProjectCatalogRepository: ProjectCatalogPersisting {
                             && project.rootDirectory.standardizedFileURL.resolvingSymlinksInPath()
                               == record.rootDirectory.standardizedFileURL.resolvingSymlinksInPath()
                       }
-                      && ProjectProfile.validScriptName(record.scriptName)
+                      && (record.javaArchiveRelativePath.map { path in
+                          record.scriptName == "java"
+                              && ProfileJavaArchive(relativePath: path, executablePath: "/usr/bin/java").isValid
+                      } ?? ProjectProfile.validScriptName(record.scriptName))
                       && record.identity.pid > 0 && record.identity.executablePath.hasPrefix("/")
                   }) else { throw LocalReadFailure(kind: .corruptStorage) }
             guard Set(catalog.managedComposeRuns.map(\.projectID)).count == catalog.managedComposeRuns.count,
@@ -61,6 +64,30 @@ struct FileProjectCatalogRepository: ProjectCatalogPersisting {
                       && !run.containerIDs.isEmpty
                       && Set(run.containerIDs).count == run.containerIDs.count
                       && run.containerIDs.allSatisfy { id in id.count == 64 && id.utf8.allSatisfy { byte in
+                          (48...57).contains(byte) || (97...102).contains(byte)
+                      } }
+                  }) else { throw LocalReadFailure(kind: .corruptStorage) }
+            guard Set(catalog.pendingProjectLaunches.map(\.projectID)).count == catalog.pendingProjectLaunches.count,
+                  catalog.pendingProjectLaunches.allSatisfy({ pending in
+                      catalog.projects.contains { project in
+                          project.id == pending.projectID
+                            && project.rootDirectory.standardizedFileURL.resolvingSymlinksInPath()
+                              == pending.rootDirectory.standardizedFileURL.resolvingSymlinksInPath()
+                      }
+                      && !pending.commandLabel.isEmpty && pending.commandLabel.utf8.count <= 256
+                      && (pending.pid == nil || pending.pid! > 0)
+                  }),
+                  Set(catalog.pendingComposeStarts.map(\.projectID)).count == catalog.pendingComposeStarts.count,
+                  catalog.pendingComposeStarts.allSatisfy({ pending in
+                      catalog.projects.contains { project in
+                          project.id == pending.projectID
+                            && project.rootDirectory.standardizedFileURL.resolvingSymlinksInPath()
+                              == pending.rootDirectory.standardizedFileURL.resolvingSymlinksInPath()
+                      }
+                      && ProjectProfile.validComposeName(pending.configurationName)
+                      && pending.configurationDigest.count == 64
+                      && Set(pending.baselineContainerIDs).count == pending.baselineContainerIDs.count
+                      && pending.baselineContainerIDs.allSatisfy { id in id.count == 64 && id.utf8.allSatisfy { byte in
                           (48...57).contains(byte) || (97...102).contains(byte)
                       } }
                   }) else { throw LocalReadFailure(kind: .corruptStorage) }

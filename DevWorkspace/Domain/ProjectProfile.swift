@@ -17,15 +17,37 @@ struct ProfileTrust: Codable, Equatable, Sendable {
     let acceptedAt: Date
 }
 
+/// A deliberately narrow native Java launch: no shell, arbitrary JVM flags,
+/// environment secrets or build hooks are imported from an untrusted checkout.
+struct ProfileJavaArchive: Codable, Equatable, Sendable {
+    var relativePath: String
+    var executablePath: String
+    var springProfile: String? = nil
+    var serverPort: UInt16? = nil
+
+    var isValid: Bool {
+        let components = relativePath.split(separator: "/", omittingEmptySubsequences: false)
+        return !components.isEmpty && relativePath.utf8.count <= 512
+            && relativePath.hasSuffix(".jar")
+            && components.allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." && !$0.contains("\0") }
+            && executablePath.hasPrefix("/") && executablePath.utf8.count <= 1_024
+            && URL(fileURLWithPath: executablePath).lastPathComponent == "java"
+            && (springProfile == nil || (!springProfile!.isEmpty && springProfile!.utf8.count <= 80
+                && springProfile!.utf8.allSatisfy { "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-".utf8.contains($0) }))
+            && (serverPort == nil || serverPort! > 0)
+    }
+}
+
 struct ProjectProfile: Codable, Equatable, Sendable {
     var commands: [ProfileScriptCommand] = []
     var homebrewServices: [String] = []
     var composeConfigurationName: String? = nil
     var processReadinessURL: URL? = nil
     var composeReadinessURL: URL? = nil
+    var javaArchive: ProfileJavaArchive? = nil
     var trust: ProfileTrust? = nil
 
-    var isEmpty: Bool { commands.isEmpty && homebrewServices.isEmpty && composeConfigurationName == nil }
+    var isEmpty: Bool { commands.isEmpty && homebrewServices.isEmpty && composeConfigurationName == nil && javaArchive == nil }
 
     func isValid() -> Bool {
         Set(commands.map(\.role)).count == commands.count
@@ -33,19 +55,22 @@ struct ProjectProfile: Codable, Equatable, Sendable {
             && Set(homebrewServices).count == homebrewServices.count
             && homebrewServices.allSatisfy(Self.validHomebrewName)
             && (composeConfigurationName == nil || Self.validComposeName(composeConfigurationName!))
-            && (processReadinessURL == nil || (commands.contains(where: { $0.role == .start })
+            && (processReadinessURL == nil || ((commands.contains(where: { $0.role == .start }) || javaArchive != nil)
                 && Self.validReadinessURL(processReadinessURL!)))
             && (composeReadinessURL == nil || (composeConfigurationName != nil
                 && Self.validReadinessURL(composeReadinessURL!)))
+            && (javaArchive == nil || (javaArchive!.isValid
+                && !commands.contains(where: { $0.role == .start })))
             && (trust == nil || (trust?.fingerprint.count == 64
                 && trust?.fingerprint.utf8.allSatisfy { "0123456789abcdef".utf8.contains($0) } == true))
     }
 
     func fingerprint(projectID: ProjectIdentifier, root: URL, packageDigest: String?,
-                     composeDigest: String? = nil) -> String? {
+                     composeDigest: String? = nil, javaDigest: String? = nil) -> String? {
         guard isValid(), !isEmpty,
               commands.isEmpty || packageDigest?.count == 64,
-              composeConfigurationName == nil || composeDigest?.count == 64 else { return nil }
+              composeConfigurationName == nil || composeDigest?.count == 64,
+              javaArchive == nil || javaDigest?.count == 64 else { return nil }
         let description = FingerprintInput(projectID: projectID.rawValue,
             root: root.standardizedFileURL.resolvingSymlinksInPath().path,
             packageDigest: commands.isEmpty ? nil : packageDigest,
@@ -54,7 +79,8 @@ struct ProjectProfile: Codable, Equatable, Sendable {
             composeConfigurationName: composeConfigurationName,
             composeDigest: composeConfigurationName == nil ? nil : composeDigest,
             processReadinessURL: processReadinessURL?.absoluteString,
-            composeReadinessURL: composeReadinessURL?.absoluteString)
+            composeReadinessURL: composeReadinessURL?.absoluteString,
+            javaArchive: javaArchive, javaDigest: javaArchive == nil ? nil : javaDigest)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(description) else { return nil }
@@ -62,10 +88,11 @@ struct ProjectProfile: Codable, Equatable, Sendable {
     }
 
     func isTrusted(projectID: ProjectIdentifier, root: URL, packageDigest: String?,
-                   composeDigest: String? = nil) -> Bool {
+                   composeDigest: String? = nil, javaDigest: String? = nil) -> Bool {
         guard let trust else { return false }
         return trust.fingerprint == fingerprint(projectID: projectID, root: root,
-                                                packageDigest: packageDigest, composeDigest: composeDigest)
+                                                packageDigest: packageDigest, composeDigest: composeDigest,
+                                                javaDigest: javaDigest)
     }
 
     static func validScriptName(_ value: String) -> Bool {
@@ -105,6 +132,8 @@ struct ProjectProfile: Codable, Equatable, Sendable {
         let composeDigest: String?
         let processReadinessURL: String?
         let composeReadinessURL: String?
+        let javaArchive: ProfileJavaArchive?
+        let javaDigest: String?
     }
 }
 

@@ -7,6 +7,122 @@ import XCTest
 final class ComposeExecutionTests: XCTestCase {
     private let fullID = String(repeating: "a", count: 64)
 
+    func test_workspace_whenComposeAndNodeAreTrusted_shouldStartInOrderAndStopBoth() async throws {
+        guard let npm = NPMExecutableResolver.resolve() else { throw XCTSkip("npm is required") }
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let port = try availablePort()
+        try Data("services: {web: {image: caddy:2.11.4-alpine}}".utf8)
+            .write(to: root.appendingPathComponent("compose.yaml"))
+        let script = "require('http').createServer((q,r)=>{r.writeHead(200);r.end('ready')}).listen(\(port),'127.0.0.1')"
+        try Data(script.utf8).write(to: root.appendingPathComponent("server.js"))
+        try Data("{\"scripts\":{\"dev\":\"node server.js\"}}".utf8)
+            .write(to: root.appendingPathComponent("package.json"))
+        let project = try testProject(root)
+        let repository = FileProjectCatalogRepository(fileURL: root.appendingPathComponent("catalog.json"))
+        try repository.save(ProjectCatalog(projects: [project], selectedID: project.id))
+        let controller = ComposeControlFixture(id: fullID)
+        let store = WorkspaceStore(provider: PreviewWorkspaceSnapshotProvider(), catalogRepository: repository,
+                                   npmExecutable: npm, composeController: controller)
+        await store.discoverConfiguration()
+        let url = URL(string: "http://127.0.0.1:\(port)/health")!
+        let draft = ProjectProfile(commands: [ProfileScriptCommand(role: .start, scriptName: "dev")],
+            composeConfigurationName: "compose.yaml", processReadinessURL: url)
+        try store.saveProfileDraft(draft, for: project.id)
+        try await store.trustProfile(for: project.id, reviewed: draft,
+            packageDigest: store.discovery?.value?.packageDigest,
+            composeDigest: store.discovery?.value?.composeDigest)
+        store.startSelectedWorkspace()
+        for _ in 0..<150 {
+            if store.workspacePhase == .ready { break }
+            if case .failed = store.workspacePhase { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let reached = store.workspacePhase
+        let readyURL = store.readyPrimaryURL
+        store.stopSelectedWorkspace()
+        for _ in 0..<100 {
+            if store.workspacePhase == .stopped { break }
+            if case .failed = store.workspacePhase { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(reached, .ready)
+        XCTAssertEqual(readyURL, url)
+        XCTAssertEqual(store.workspacePhase, .stopped)
+        XCTAssertNil(store.managedProcess)
+        XCTAssertNil(store.managedComposeRun)
+        let stopped = await controller.stoppedIDs
+        XCTAssertEqual(stopped, [fullID])
+    }
+
+    func test_workspace_whenNodeFailsAfterComposeStart_shouldRollbackOnlyNewCompose() async throws {
+        guard let npm = NPMExecutableResolver.resolve() else { throw XCTSkip("npm is required") }
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let port = try availablePort()
+        try Data("services: {web: {image: caddy:2.11.4-alpine}}".utf8)
+            .write(to: root.appendingPathComponent("compose.yaml"))
+        try Data("{\"scripts\":{\"dev\":\"node -e 'process.exit(2)'\"}}".utf8)
+            .write(to: root.appendingPathComponent("package.json"))
+        let project = try testProject(root)
+        let repository = FileProjectCatalogRepository(fileURL: root.appendingPathComponent("catalog.json"))
+        try repository.save(ProjectCatalog(projects: [project], selectedID: project.id))
+        let controller = ComposeControlFixture(id: fullID)
+        let store = WorkspaceStore(provider: PreviewWorkspaceSnapshotProvider(), catalogRepository: repository,
+                                   readinessTimeout: .milliseconds(300), npmExecutable: npm,
+                                   composeController: controller)
+        await store.discoverConfiguration()
+        let url = URL(string: "http://127.0.0.1:\(port)/health")!
+        let draft = ProjectProfile(commands: [ProfileScriptCommand(role: .start, scriptName: "dev")],
+            composeConfigurationName: "compose.yaml", processReadinessURL: url)
+        try store.saveProfileDraft(draft, for: project.id)
+        try await store.trustProfile(for: project.id, reviewed: draft,
+            packageDigest: store.discovery?.value?.packageDigest,
+            composeDigest: store.discovery?.value?.composeDigest)
+        store.startSelectedWorkspace()
+        for _ in 0..<150 {
+            if case .failed = store.workspacePhase { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(store.workspacePhase, .failed(.applicationNotReady))
+        XCTAssertNil(store.managedProcess)
+        XCTAssertNil(store.managedComposeRun)
+        let stopped = await controller.stoppedIDs
+        XCTAssertEqual(stopped, [fullID])
+        XCTAssertTrue(try repository.load().pendingComposeStarts.isEmpty)
+    }
+
+    func test_pendingComposeStart_whenAppRestarts_shouldRecoverOnlyNewContainer() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let project = try testProject(root)
+        let repository = FileProjectCatalogRepository(fileURL: root.appendingPathComponent("catalog.json"))
+        let pending = PendingComposeStart(projectID: project.id, rootDirectory: root,
+            configurationName: "compose.yaml", configurationDigest: String(repeating: "b", count: 64),
+            baselineContainerIDs: [], createdAt: .now)
+        try repository.save(ProjectCatalog(projects: [project], selectedID: project.id,
+                                           pendingComposeStarts: [pending]))
+        let controller = ComposeControlFixture(id: fullID, initialRunning: true)
+        let store = WorkspaceStore(provider: PreviewWorkspaceSnapshotProvider(), catalogRepository: repository,
+                                   composeController: controller)
+        XCTAssertEqual(store.composePhase, .recoveryRequired)
+        store.startSelectedCompose()
+        XCTAssertEqual(store.composePhase, .recoveryRequired)
+        store.recoverPendingComposeStart()
+        for _ in 0..<100 where store.managedComposeRun == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(store.managedComposeRun?.containerIDs, [fullID])
+        XCTAssertTrue(try repository.load().pendingComposeStarts.isEmpty)
+        store.stopSelectedCompose()
+        for _ in 0..<100 where store.composePhase != .stopped {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(store.composePhase, .stopped)
+        let stopped = await controller.stoppedIDs
+        XCTAssertEqual(stopped, [fullID])
+    }
+
     func test_compose_whenTrusted_shouldStartVerifyHealthAndStopExactContainer() async throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -424,6 +540,109 @@ final class ComposeExecutionTests: XCTestCase {
         XCTAssertEqual(processReached, .ready)
         XCTAssertEqual(store.executionPhase, .stopped)
         XCTAssertEqual(store.composePhase, .stopped)
+        XCTAssertNil(store.managedProcess)
+        XCTAssertNil(store.managedComposeRun)
+    }
+
+    func test_liveBackendNativeJava_whenExplicitlyEnabled_shouldOneClickStartAndStop() async throws {
+        struct Configuration: Decodable {
+            let root: String
+            let javaExecutable: String
+            let jarSource: String
+        }
+        let marker = URL(fileURLWithPath: "/private/tmp/DevWorkspaceBackendNativeAcceptance")
+        guard let data = try? Data(contentsOf: marker),
+              let configuration = try? JSONDecoder().decode(Configuration.self, from: data),
+              configuration.root.hasPrefix("/private/tmp/devworkspace-backend-acceptance."),
+              configuration.javaExecutable.hasPrefix("/"),
+              configuration.jarSource.hasSuffix(".jar") else {
+            throw XCTSkip("The isolated backend native-Java acceptance is explicitly opt-in")
+        }
+        let root = URL(fileURLWithPath: configuration.root, isDirectory: true)
+        let archive = root.appendingPathComponent("app.jar")
+        let configDirectory = root.appendingPathComponent("config")
+        let source = URL(fileURLWithPath: configuration.jarSource)
+        guard FileManager.default.fileExists(atPath: root.appendingPathComponent("docker-compose.yml").path),
+              FileManager.default.isExecutableFile(atPath: configuration.javaExecutable),
+              FileManager.default.fileExists(atPath: source.path),
+              !FileManager.default.fileExists(atPath: archive.path),
+              !FileManager.default.fileExists(atPath: configDirectory.path) else {
+            throw XCTSkip("Isolated backend inputs are unavailable or already in use")
+        }
+        try FileManager.default.copyItem(at: source, to: archive)
+        try FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
+        let overrides = """
+        spring:
+          datasource:
+            url: jdbc:postgresql://127.0.0.1:15433/knowledge_vault
+            username: knowledgevault
+            password: devworkspace-isolated-postgres
+          data:
+            redis:
+              host: 127.0.0.1
+              port: 16379
+              password: devworkspace-isolated-redis
+          elasticsearch:
+            uris: http://127.0.0.1:19200
+        knowledge-vault:
+          storage:
+            s3:
+              endpoint: http://127.0.0.1:19000
+              access-key: devworkspace-isolated-minio
+              secret-key: devworkspace-isolated-minio-password
+          sync:
+            maintenance:
+              enabled: false
+          infrastructure:
+            monitor:
+              enabled: false
+          search:
+            worker:
+              enabled: false
+          rag:
+            worker:
+              enabled: false
+          security:
+            initial-user:
+              enabled: false
+            sms:
+              enabled: false
+        """
+        try Data(overrides.utf8).write(to: configDirectory.appendingPathComponent("application-dev.yml"))
+        let project = try testProject(root)
+        let repository = FileProjectCatalogRepository(fileURL: root.appendingPathComponent("native-catalog.json"))
+        try repository.save(ProjectCatalog(projects: [project], selectedID: project.id))
+        let controller = LocalDockerComposeController()
+        let store = WorkspaceStore(provider: PreviewWorkspaceSnapshotProvider(), catalogRepository: repository,
+                                   readinessTimeout: .seconds(120), composeController: controller)
+        await store.discoverConfiguration()
+        let java = ProfileJavaArchive(relativePath: "app.jar", executablePath: configuration.javaExecutable,
+                                      springProfile: "dev", serverPort: 18080)
+        let profile = ProjectProfile(composeConfigurationName: "docker-compose.yml",
+            processReadinessURL: URL(string: "http://127.0.0.1:18080/actuator/health")!,
+            composeReadinessURL: URL(string: "http://127.0.0.1:19200/")!, javaArchive: java)
+        try store.saveProfileDraft(profile, for: project.id)
+        await store.refreshJavaArchiveSource()
+        try await store.trustProfile(for: project.id, reviewed: profile, packageDigest: nil,
+            composeDigest: store.discovery?.value?.composeDigest,
+            javaDigest: store.javaArchiveSource?.value?.digest)
+        store.startSelectedWorkspace()
+        for _ in 0..<150 {
+            if store.workspacePhase == .ready { break }
+            if case .failed = store.workspacePhase { break }
+            try await Task.sleep(for: .seconds(1))
+        }
+        let reached = store.workspacePhase
+        let readyURL = store.readyPrimaryURL
+        store.stopSelectedWorkspace()
+        for _ in 0..<120 {
+            if store.workspacePhase == .stopped { break }
+            if case .failed = store.workspacePhase { break }
+            try await Task.sleep(for: .milliseconds(500))
+        }
+        XCTAssertEqual(reached, .ready)
+        XCTAssertEqual(readyURL, profile.processReadinessURL)
+        XCTAssertEqual(store.workspacePhase, .stopped)
         XCTAssertNil(store.managedProcess)
         XCTAssertNil(store.managedComposeRun)
     }

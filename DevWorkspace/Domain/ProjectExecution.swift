@@ -6,6 +6,26 @@ struct ManagedProjectProcess: Codable, Equatable, Sendable {
     let scriptName: String
     let identity: ProcessIdentity
     let launchedAt: Date
+    var javaArchiveRelativePath: String? = nil
+}
+
+/// Written before spawning so a crash or failed identity read never makes a
+/// possibly running child disappear from the project's control surface.
+struct PendingProjectLaunch: Codable, Equatable, Sendable {
+    let projectID: ProjectIdentifier
+    let rootDirectory: URL
+    let commandLabel: String
+    var pid: Int32?
+    let createdAt: Date
+}
+
+struct PendingComposeStart: Codable, Equatable, Sendable {
+    let projectID: ProjectIdentifier
+    let rootDirectory: URL
+    let configurationName: String
+    let configurationDigest: String
+    let baselineContainerIDs: [String]
+    let createdAt: Date
 }
 
 enum ProjectExecutionPhase: Equatable, Sendable {
@@ -56,4 +76,15 @@ enum ComposeExecutionPhase: Equatable, Sendable {
     case idle, validating, starting, checkingReadiness, ready, stopping, stopped, cancelled
     case recoveryRequired
     case failed(ComposeExecutionFailure)
+}
+
+enum WorkspaceControlFailure: String, Error, Sendable {
+    case noTrustedProfile, homebrewNotReady, composeNotReady, applicationNotReady
+    case pendingRecovery, stopRefused
+}
+
+enum WorkspaceControlPhase: Equatable, Sendable {
+    case idle, validating, startingDependencies, startingApplication, ready
+    case stoppingApplication, stoppingDependencies, stopped, cancelled, recoveryRequired
+    case failed(WorkspaceControlFailure)
 }

@@ -23,6 +23,7 @@ struct MenuBarContentView: View {
             if snapshot?.origin == .preview { lifecycleStrip }
             if snapshot?.readings != nil {
                 LocalWorkspaceReadingsView(store: store, compact: true)
+                operationalControls
             } else if let snapshot {
                 readyMessage(snapshot)
                 workspaceSteps(snapshot)
@@ -202,7 +203,7 @@ struct MenuBarContentView: View {
 
     private var statusLabel: some View {
         let presentation = WorkspaceStatusPresentation(
-            state: store.state,
+            state: store.presentationState,
             language: appLanguage
         )
 
@@ -252,7 +253,7 @@ struct MenuBarContentView: View {
 
     private func readyMessage(_ snapshot: WorkspaceSnapshot) -> some View {
         let presentation = WorkspaceStatusPresentation(
-            state: store.state,
+            state: store.presentationState,
             language: appLanguage
         )
         let healthyCount = snapshot.services.filter { $0.health == .healthy }.count
@@ -441,11 +442,11 @@ struct MenuBarContentView: View {
     }
 
     private var snapshot: WorkspaceSnapshot? {
-        store.currentSnapshot
+        store.presentationSnapshot
     }
 
     private var stateMessage: WorkspaceStateMessage? {
-        switch store.state {
+        switch store.presentationState {
         case let .degraded(_, message), let .failed(message):
             message
         case .idle, .refreshing, .ready:
@@ -454,13 +455,50 @@ struct MenuBarContentView: View {
     }
 
     private var currentLifecycle: WorkspaceLifecycle? {
-        switch store.state {
+        switch store.presentationState {
         case .idle, .failed:
             nil
         case let .refreshing(previous):
             previous?.lifecycle ?? .starting
         case let .ready(snapshot), let .degraded(snapshot, _):
             snapshot.lifecycle
+        }
+    }
+
+    @ViewBuilder private var operationalControls: some View {
+        if let project = store.project,
+           let profile = store.preferences(for: project.id).profile,
+           profile.javaArchive != nil || profile.commands.contains(where: { $0.role == .start }) {
+            VStack(alignment: .leading, spacing: DevSpaceSpacing.small) {
+                HStack {
+                    Text("profile.workspace-title").font(.caption.weight(.semibold))
+                    Spacer()
+                    Text(LocalizedStringKey(store.operationalLifecycle == .ready
+                        ? "workspace.status.ready" : "workspace.status.\(store.operationalLifecycle.rawValue)"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Button("profile.workspace-start") { store.startSelectedWorkspace() }
+                        .disabled(profile.trust == nil || store.isWorkspaceBusy
+                            || store.pendingProjectLaunch != nil || store.pendingComposeStart != nil)
+                        .accessibilityIdentifier("menuBar.startWorkspace")
+                    Button("profile.workspace-stop") { store.stopSelectedWorkspace() }
+                        .disabled(store.isWorkspaceBusy
+                            || (store.managedProcess == nil && store.managedComposeRun == nil))
+                        .accessibilityIdentifier("menuBar.stopWorkspace")
+                    if store.isWorkspaceBusy {
+                        Button("projects.cancel") { store.cancelSelectedWorkspaceStart() }
+                    }
+                }.font(.caption)
+                if let url = store.readyPrimaryURL {
+                    Button { openExternalURL(url) } label: {
+                        Label(url.absoluteString, systemImage: "globe")
+                            .lineLimit(1).truncationMode(.middle)
+                    }
+                    .accessibilityIdentifier("menuBar.openReadyURL")
+                }
+            }
+            .padding(.top, DevSpaceSpacing.small)
         }
     }
 

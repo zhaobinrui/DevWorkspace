@@ -152,15 +152,23 @@ struct ProjectCatalog: Codable, Equatable, Sendable {
     var preferences: [ProjectPreferences] = []
     var managedProcesses: [ManagedProjectProcess] = []
     var managedComposeRuns: [ManagedComposeRun] = []
+    var pendingProjectLaunches: [PendingProjectLaunch] = []
+    var pendingComposeStarts: [PendingComposeStart] = []
 
-    enum CodingKeys: String, CodingKey { case version, projects, selectedID, bindings, preferences, managedProcesses, managedComposeRuns }
+    enum CodingKeys: String, CodingKey {
+        case version, projects, selectedID, bindings, preferences, managedProcesses, managedComposeRuns
+        case pendingProjectLaunches, pendingComposeStarts
+    }
 
     init(version: Int = 1, projects: [ProjectReference] = [], selectedID: ProjectIdentifier? = nil,
          bindings: [ProcessProjectBinding] = [], preferences: [ProjectPreferences] = [],
-         managedProcesses: [ManagedProjectProcess] = [], managedComposeRuns: [ManagedComposeRun] = []) {
+         managedProcesses: [ManagedProjectProcess] = [], managedComposeRuns: [ManagedComposeRun] = [],
+         pendingProjectLaunches: [PendingProjectLaunch] = [], pendingComposeStarts: [PendingComposeStart] = []) {
         self.version = version; self.projects = projects; self.selectedID = selectedID
         self.bindings = bindings; self.preferences = preferences; self.managedProcesses = managedProcesses
         self.managedComposeRuns = managedComposeRuns
+        self.pendingProjectLaunches = pendingProjectLaunches
+        self.pendingComposeStarts = pendingComposeStarts
     }
 
     init(from decoder: any Decoder) throws {
@@ -173,5 +181,7 @@ struct ProjectCatalog: Codable, Equatable, Sendable {
         preferences = try values.decodeIfPresent([ProjectPreferences].self, forKey: .preferences) ?? []
         managedProcesses = try values.decodeIfPresent([ManagedProjectProcess].self, forKey: .managedProcesses) ?? []
         managedComposeRuns = try values.decodeIfPresent([ManagedComposeRun].self, forKey: .managedComposeRuns) ?? []
+        pendingProjectLaunches = try values.decodeIfPresent([PendingProjectLaunch].self, forKey: .pendingProjectLaunches) ?? []
+        pendingComposeStarts = try values.decodeIfPresent([PendingComposeStart].self, forKey: .pendingComposeStarts) ?? []
     }
 }

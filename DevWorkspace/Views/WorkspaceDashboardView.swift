@@ -36,7 +36,7 @@ struct WorkspaceDashboardView: View {
                             if store.currentSnapshot?.readings != nil || store.userProcesses != nil {
                                 WorkspaceOverviewView(store: store)
                             } else {
-                                WorkspaceSummaryView(state: store.state)
+                                WorkspaceSummaryView(state: store.presentationState)
                             }
                         } else {
                             ContentUnavailableView {
@@ -194,7 +194,7 @@ struct WorkspaceDashboardView: View {
                     .font(.system(size: 26, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 0)
                 if store.project != nil && !showsUserProcesses {
-                    let status = WorkspaceStatusPresentation(state: store.state, language: language)
+                    let status = WorkspaceStatusPresentation(state: store.presentationState, language: language)
                     Label(status.title, systemImage: status.semanticStatus.token.systemImage)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(status.semanticStatus.token.color)

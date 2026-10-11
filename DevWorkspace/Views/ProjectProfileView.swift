@@ -7,6 +7,11 @@ struct ProjectProfileView: View {
     @State private var candidate: ScriptReview?
     @State private var trustReview: TrustReview?
     @State private var homebrewName = ""
+    @State private var javaPath = ""
+    @State private var javaExecutable = "/usr/bin/java"
+    @State private var javaSpringProfile = ""
+    @State private var javaPort = ""
+    @State private var confirmsManualProcessResolution = false
     @State private var errorText: String?
     @State private var isTrusting = false
 
@@ -67,6 +72,39 @@ struct ProjectProfileView: View {
                 }
                 if availableScripts.isEmpty {
                     Text("profile.no-scripts").font(.caption).foregroundStyle(.secondary)
+                }
+                Divider()
+                Text("profile.java-title").font(.subheadline.weight(.semibold))
+                Text("profile.java-note").font(.caption).foregroundStyle(.secondary)
+                TextField("profile.java-path", text: $javaPath).textFieldStyle(.roundedBorder)
+                TextField("profile.java-executable", text: $javaExecutable).textFieldStyle(.roundedBorder)
+                HStack {
+                    TextField("profile.java-spring-profile", text: $javaSpringProfile)
+                    TextField("profile.java-port", text: $javaPort)
+                }.textFieldStyle(.roundedBorder)
+                HStack {
+                    Button("profile.java-save") {
+                        guard let archive = javaDraft() else { return }
+                        updateDraft(project) {
+                            $0.javaArchive = archive
+                            $0.commands.removeAll { $0.role == .start }
+                        }
+                    }.disabled(javaDraft() == nil || store.catalogLoadBlocked)
+                    if profile.javaArchive != nil {
+                        Button("profile.remove", role: .destructive) {
+                            updateDraft(project) { $0.javaArchive = nil; $0.processReadinessURL = nil }
+                        }.disabled(store.catalogLoadBlocked)
+                    }
+                }
+                if let source = store.javaArchiveSource {
+                    if let value = source.value {
+                        Text("SHA-256: \(value.digest) · \(value.byteCount) bytes")
+                            .font(.caption2.monospaced()).textSelection(.enabled)
+                    }
+                    if let failure = source.failure {
+                        Label(failure.localized(in: language), systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
                 }
                 Divider()
                 Text("profile.homebrew").font(.subheadline.weight(.semibold))
@@ -151,25 +189,64 @@ struct ProjectProfileView: View {
                         trustReview = TrustReview(projectID: project.id, root: project.rootDirectory,
                             profile: profile, packageDigest: store.discovery?.value?.packageDigest,
                             composeDigest: store.discovery?.value?.composeDigest,
+                            javaDigest: store.javaArchiveSource?.value?.digest,
+                            javaByteCount: store.javaArchiveSource?.value?.byteCount,
                             composeContents: store.discovery?.value?.composeContents,
                             scripts: availableScripts)
                     }
                     .disabled(store.catalogLoadBlocked || !canReview(profile))
                     .accessibilityIdentifier("workspace.reviewProfileTrust")
                 }
-                if let command = profile.commands.first(where: { $0.role == .start }) ??
-                    store.managedProcess.map({ ProfileScriptCommand(role: .start, scriptName: $0.scriptName) }) {
+                if profile.commands.contains(where: { $0.role == .start }) || profile.javaArchive != nil
+                    || store.managedProcess != nil || store.managedComposeRun != nil {
+                    Divider()
+                    Text("profile.workspace-title").font(.subheadline.weight(.semibold))
+                    Text("profile.workspace-note").font(.caption).foregroundStyle(.secondary)
+                    Text(LocalizedStringKey(workspacePhaseKey(store.workspacePhase)))
+                        .font(.caption).foregroundStyle(.secondary)
+                    if case let .failed(failure) = store.workspacePhase {
+                        Label(LocalizedStringKey("profile.workspace-error.\(failure.rawValue)"),
+                              systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
+                    HStack {
+                        Button("profile.workspace-start") { store.startSelectedWorkspace() }
+                            .disabled(profile.trust == nil || store.isWorkspaceBusy || executionIsBusy
+                                || composeIsBusy || store.pendingProjectLaunch != nil
+                                || store.pendingComposeStart != nil || store.catalogLoadBlocked)
+                            .accessibilityIdentifier("workspace.startWorkspace")
+                        Button("profile.workspace-stop") { store.stopSelectedWorkspace() }
+                            .disabled(store.isWorkspaceBusy || executionIsBusy || composeIsBusy
+                                || (store.managedProcess == nil && store.managedComposeRun == nil))
+                            .accessibilityIdentifier("workspace.stopWorkspace")
+                        if store.isWorkspaceBusy {
+                            Button("projects.cancel") { store.cancelSelectedWorkspaceStart() }
+                        }
+                    }
+                }
+                if profile.commands.contains(where: { $0.role == .start }) || profile.javaArchive != nil
+                    || store.managedProcess != nil || store.pendingProjectLaunch != nil {
                     Divider()
                     Text("profile.execution-title").font(.subheadline.weight(.semibold))
                     Text("profile.execution-note").font(.caption).foregroundStyle(.secondary)
                     readinessSelection(project: project, compose: false, selected: profile.processReadinessURL)
                     if let record = store.managedProcess {
-                        Text("npm run \(record.scriptName) · PID \(record.identity.pid)")
+                        let commandLabel = record.javaArchiveRelativePath.map { "java -jar \($0)" }
+                            ?? "npm run \(record.scriptName)"
+                        Text("\(commandLabel) · PID \(record.identity.pid)")
                             .font(.caption.monospaced()).textSelection(.enabled)
                         Text(record.identity.executablePath).font(.caption2).foregroundStyle(.secondary)
                             .textSelection(.enabled)
-                    } else {
+                    } else if let archive = profile.javaArchive {
+                        Text("java -jar \(archive.relativePath)").font(.caption.monospaced())
+                    } else if let command = profile.commands.first(where: { $0.role == .start }) {
                         Text("npm run \(command.scriptName)").font(.caption.monospaced())
+                    }
+                    if let pending = store.pendingProjectLaunch {
+                        Label("\(pending.commandLabel) · \(pending.pid.map(String.init) ?? "PID 未记录")",
+                              systemImage: "exclamationmark.shield")
+                            .font(.caption).foregroundStyle(.orange)
+                        Text("profile.pending-process-note").font(.caption2).foregroundStyle(.secondary)
                     }
                     Text(LocalizedStringKey(phaseKey(store.executionPhase)))
                         .font(.caption).foregroundStyle(.secondary)
@@ -182,7 +259,8 @@ struct ProjectProfileView: View {
                         if store.managedProcess == nil {
                             Button("profile.execution-start") { store.startSelectedProject() }
                                 .disabled(store.profileTrustStatus(for: project) != .trusted
-                                    || executionIsBusy || composeIsBusy || store.catalogLoadBlocked)
+                                    || executionIsBusy || composeIsBusy || store.catalogLoadBlocked
+                                    || store.pendingProjectLaunch != nil)
                         } else {
                             Button("profile.execution-stop") { store.stopSelectedProject() }
                                 .disabled(executionIsBusy || composeIsBusy)
@@ -194,9 +272,16 @@ struct ProjectProfileView: View {
                         if executionIsBusy && store.executionPhase != .stopping {
                             Button("projects.cancel") { store.cancelSelectedProjectStart() }
                         }
+                        if store.pendingProjectLaunch != nil {
+                            Button("profile.pending-retry") { store.retryPendingProjectCleanup() }
+                                .disabled(executionIsBusy || composeIsBusy)
+                            Button("profile.pending-acknowledge") { confirmsManualProcessResolution = true }
+                                .disabled(executionIsBusy || composeIsBusy)
+                        }
                     }
                 }
-                if profile.composeConfigurationName != nil || store.managedComposeRun != nil {
+                if profile.composeConfigurationName != nil || store.managedComposeRun != nil
+                    || store.pendingComposeStart != nil {
                     Divider()
                     Text("profile.compose-control-title").font(.subheadline.weight(.semibold))
                     Text("profile.compose-control-note").font(.caption).foregroundStyle(.secondary)
@@ -218,7 +303,8 @@ struct ProjectProfileView: View {
                         if store.managedComposeRun == nil {
                             Button("profile.compose-start") { store.startSelectedCompose() }
                                 .disabled(store.profileTrustStatus(for: project) != .trusted
-                                    || composeIsBusy || executionIsBusy || store.catalogLoadBlocked)
+                                    || composeIsBusy || executionIsBusy || store.catalogLoadBlocked
+                                    || store.pendingComposeStart != nil)
                         } else {
                             Button("profile.compose-stop") { store.stopSelectedCompose() }
                                 .disabled(composeIsBusy || executionIsBusy)
@@ -229,6 +315,10 @@ struct ProjectProfileView: View {
                         }
                         if composeIsBusy && store.composePhase != .stopping {
                             Button("projects.cancel") { store.cancelSelectedComposeStart() }
+                        }
+                        if store.pendingComposeStart != nil {
+                            Button("profile.pending-compose-recover") { store.recoverPendingComposeStart() }
+                                .disabled(composeIsBusy || executionIsBusy)
                         }
                     }
                 }
@@ -249,6 +339,7 @@ struct ProjectProfileView: View {
                             updateDraft(project) { draft in
                                 draft.commands.removeAll { $0.role == review.role }
                                 draft.commands.append(ProfileScriptCommand(role: review.role, scriptName: review.script.name))
+                                if review.role == .start { draft.javaArchive = nil }
                             }
                             candidate = nil
                         }.keyboardShortcut(.defaultAction)
@@ -278,6 +369,19 @@ struct ProjectProfileView: View {
                                 Text(review.composeContents ?? "").font(.caption.monospaced())
                                     .textSelection(.enabled)
                             }
+                            if let archive = review.profile.javaArchive {
+                                Text("profile.java-title").font(.subheadline.weight(.semibold))
+                                Text("\(archive.executablePath) -jar \(archive.relativePath)")
+                                    .font(.caption.monospaced()).textSelection(.enabled)
+                                if let spring = archive.springProfile {
+                                    Text("--spring.profiles.active=\(spring)").font(.caption.monospaced())
+                                }
+                                if let port = archive.serverPort {
+                                    Text("--server.port=\(port)").font(.caption.monospaced())
+                                }
+                                Text("SHA-256: \(review.javaDigest ?? "—") · \(review.javaByteCount ?? 0) bytes")
+                                    .font(.caption.monospaced()).textSelection(.enabled)
+                            }
                             if let url = review.profile.processReadinessURL {
                                 Text("profile.execution-title").font(.subheadline.weight(.semibold))
                                 Text(url.absoluteString).font(.caption.monospaced()).textSelection(.enabled)
@@ -299,7 +403,8 @@ struct ProjectProfileView: View {
                                 do {
                                     try await store.trustProfile(for: review.projectID, reviewed: review.profile,
                                                                  packageDigest: review.packageDigest,
-                                                                 composeDigest: review.composeDigest)
+                                                                 composeDigest: review.composeDigest,
+                                                                 javaDigest: review.javaDigest)
                                     errorText = nil
                                     trustReview = nil
                                 } catch { errorText = message(for: error); trustReview = nil }
@@ -313,12 +418,38 @@ struct ProjectProfileView: View {
             .task(id: profile.homebrewServices) {
                 if !staticRendering { await store.refreshHomebrewServices() }
             }
+            .task(id: profile.javaArchive) {
+                if !staticRendering { await store.refreshJavaArchiveSource() }
+            }
+            .task(id: project.id) {
+                let archive = profile.javaArchive
+                javaPath = archive?.relativePath ?? ""
+                javaExecutable = archive?.executablePath ?? "/usr/bin/java"
+                javaSpringProfile = archive?.springProfile ?? ""
+                javaPort = archive?.serverPort.map(String.init) ?? ""
+            }
+            .confirmationDialog("profile.pending-confirm-title", isPresented: $confirmsManualProcessResolution) {
+                Button("profile.pending-confirm", role: .destructive) {
+                    store.acknowledgePendingProjectLaunch()
+                }
+            } message: { Text("profile.pending-confirm-message") }
         }
     }
 
     private var availableScripts: [DiscoveredPackageScript] {
         guard store.discovery?.failure == nil else { return [] }
         return store.discovery?.value?.packageScripts ?? []
+    }
+
+    private func javaDraft() -> ProfileJavaArchive? {
+        let path = javaPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let executable = javaExecutable.trimmingCharacters(in: .whitespacesAndNewlines)
+        let spring = javaSpringProfile.trimmingCharacters(in: .whitespacesAndNewlines)
+        let portText = javaPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard portText.isEmpty || UInt16(portText) != nil else { return nil }
+        let archive = ProfileJavaArchive(relativePath: path, executablePath: executable,
+            springProfile: spring.isEmpty ? nil : spring, serverPort: UInt16(portText))
+        return archive.isValid ? archive : nil
     }
 
     private var localReadinessLinks: [ProjectLink] {
@@ -379,6 +510,22 @@ struct ProjectProfileView: View {
         }
     }
 
+    private func workspacePhaseKey(_ phase: WorkspaceControlPhase) -> String {
+        switch phase {
+        case .idle: "profile.workspace.idle"
+        case .validating: "profile.workspace.validating"
+        case .startingDependencies: "profile.workspace.dependencies"
+        case .startingApplication: "profile.workspace.application"
+        case .ready: "profile.workspace.ready"
+        case .stoppingApplication: "profile.workspace.stopping-application"
+        case .stoppingDependencies: "profile.workspace.stopping-dependencies"
+        case .stopped: "profile.workspace.stopped"
+        case .cancelled: "profile.workspace.cancelled"
+        case .recoveryRequired: "profile.workspace.recovery"
+        case .failed: "profile.workspace.failed"
+        }
+    }
+
     private var composeIsBusy: Bool {
         switch store.composePhase {
         case .validating, .starting, .checkingReadiness, .stopping: true
@@ -411,7 +558,9 @@ struct ProjectProfileView: View {
             || (store.discovery?.failure == nil
                 && store.discovery?.value?.composeConfigurationName == profile.composeConfigurationName
                 && store.discovery?.value?.composeDigest != nil)
-        return commandsReady && composeReady
+        let javaReady = profile.javaArchive == nil || (store.javaArchiveSource?.failure == nil
+            && store.javaArchiveSource?.value != nil)
+        return commandsReady && composeReady && javaReady
     }
 
     private func updateDraft(_ project: ProjectReference, change: (inout ProjectProfile) -> Void) {
@@ -488,6 +637,8 @@ private struct TrustReview: Identifiable {
     let profile: ProjectProfile
     let packageDigest: String?
     let composeDigest: String?
+    let javaDigest: String?
+    let javaByteCount: Int64?
     let composeContents: String?
     let scripts: [DiscoveredPackageScript]
 }

@@ -43,8 +43,10 @@ final class WorkspaceStore {
     private(set) var isRefreshingUserProcesses = false
     private(set) var homebrewServices: SourceReading<[HomebrewServiceStatus]>?
     private(set) var isRefreshingHomebrewServices = false
+    private(set) var javaArchiveSource: SourceReading<JavaArchiveSource>?
     private(set) var executionPhase: ProjectExecutionPhase = .idle
     private(set) var composePhase: ComposeExecutionPhase = .idle
+    private(set) var workspacePhase: WorkspaceControlPhase = .idle
     private(set) var projectIssue: LocalReadFailure?
     private(set) var catalogLoadBlocked = false
     private(set) var isAddingProject = false
@@ -61,14 +63,18 @@ final class WorkspaceStore {
     private let configurationReader: any ProjectConfigurationReading
     private let homebrewReader: any HomebrewServiceStatusReading
     private let readinessProbe: any ProjectReadinessProbing
+    private let javaArchiveReader: any JavaArchiveReading
     private let readinessTimeout: Duration
     private let npmExecutable: URL?
     private let composeController: any DockerComposeControlling
     private var executionTask: Task<Void, Never>?
     private var composeTask: Task<Void, Never>?
+    private var workspaceTask: Task<Void, Never>?
     private var ownedProcess: Process?
     private var transientManagedProcess: ManagedProjectProcess?
     private var transientComposeRun: ManagedComposeRun?
+    private var applicationReadyCheckedAt: Date?
+    private var composeReadyCheckedAt: Date?
 
     private let provider: any WorkspaceSnapshotProviding
 
@@ -82,6 +88,7 @@ final class WorkspaceStore {
         configurationReader: any ProjectConfigurationReading = LocalProjectConfigurationReader(),
         homebrewReader: any HomebrewServiceStatusReading = LocalHomebrewServiceStatusReader(),
         readinessProbe: any ProjectReadinessProbing = LoopbackHTTPReadinessProbe(),
+        javaArchiveReader: any JavaArchiveReading = LocalJavaArchiveReader(),
         readinessTimeout: Duration = .seconds(30),
         npmExecutable: URL? = NPMExecutableResolver.resolve(),
         composeController: any DockerComposeControlling = LocalDockerComposeController()
@@ -94,6 +101,7 @@ final class WorkspaceStore {
         self.configurationReader = configurationReader
         self.homebrewReader = homebrewReader
         self.readinessProbe = readinessProbe
+        self.javaArchiveReader = javaArchiveReader
         self.readinessTimeout = readinessTimeout
         self.npmExecutable = npmExecutable
         self.composeController = composeController
@@ -189,8 +197,10 @@ final class WorkspaceStore {
         guard !catalogLoadBlocked, let project else { return }
         guard !catalog.managedProcesses.contains(where: { $0.projectID == project.id }),
               transientManagedProcess?.projectID != project.id,
+              !catalog.pendingProjectLaunches.contains(where: { $0.projectID == project.id }),
               !catalog.managedComposeRuns.contains(where: { $0.projectID == project.id }),
-              transientComposeRun?.projectID != project.id else {
+              transientComposeRun?.projectID != project.id,
+              !catalog.pendingComposeStarts.contains(where: { $0.projectID == project.id }) else {
             projectIssue = .init(kind: .activeManagedProcess)
             return
         }
@@ -301,7 +311,28 @@ final class WorkspaceStore {
         try savePreferences(preferences)
         homebrewRevision += 1
         homebrewServices = nil
+        javaArchiveSource = nil
         isRefreshingHomebrewServices = false
+    }
+
+    func refreshJavaArchiveSource() async {
+        guard let project, let archive = preferences(for: project.id).profile?.javaArchive else {
+            javaArchiveSource = nil
+            return
+        }
+        let revision = selectionRevision
+        let previous = javaArchiveSource
+        do {
+            let source = try await javaArchiveReader.read(root: project.rootDirectory, archive: archive)
+            try Task.checkCancellation()
+            guard revision == selectionRevision,
+                  preferences(for: project.id).profile?.javaArchive == archive else { return }
+            javaArchiveSource = .success(source)
+        } catch is CancellationError { }
+        catch {
+            guard revision == selectionRevision else { return }
+            javaArchiveSource = SourceReading<JavaArchiveSource>.failed(error).retainingTrustedValue(from: previous)
+        }
     }
 
     func refreshHomebrewServices() async {
@@ -334,10 +365,19 @@ final class WorkspaceStore {
             : catalog.managedProcesses.first { $0.projectID == project.id }
     }
 
-    private var hasActiveControlTask: Bool { executionTask != nil || composeTask != nil }
+    var pendingProjectLaunch: PendingProjectLaunch? {
+        guard let project else { return nil }
+        return catalog.pendingProjectLaunches.first { $0.projectID == project.id }
+    }
+
+    var isWorkspaceBusy: Bool { workspaceTask != nil }
+    private var hasActiveControlTask: Bool {
+        executionTask != nil || composeTask != nil || workspaceTask != nil
+    }
 
     func startSelectedProject() {
-        guard !hasActiveControlTask, managedProcess == nil, let project else { return }
+        guard !hasActiveControlTask, managedProcess == nil, pendingProjectLaunch == nil,
+              let project else { return }
         executionTask = Task { [weak self] in
             guard let self else { return }
             await self.performStart(project)
@@ -380,19 +420,27 @@ final class WorkspaceStore {
         executionPhase = .validating
         do {
             guard let profile = preferences(for: project.id).profile,
-                  let command = profile.commands.first(where: { $0.role == .start }),
+                  profile.commands.contains(where: { $0.role == .start }) || profile.javaArchive != nil,
                   profile.trust != nil else { throw ProjectExecutionFailure.noTrustedStart }
+            let command = profile.commands.first(where: { $0.role == .start })
+            let java = profile.javaArchive
             let fresh = try await configurationReader.read(root: project.rootDirectory)
+            let freshJava: JavaArchiveSource?
+            if let java { freshJava = try await javaArchiveReader.read(root: project.rootDirectory, archive: java) }
+            else { freshJava = nil }
             try Task.checkCancellation()
             guard selectionRevision == revision, self.project?.id == project.id,
                   preferences(for: project.id).profile == profile else {
                 throw ProfileFailure.projectChanged
             }
-            guard !fresh.issues.contains(where: { $0.source.hasPrefix("package.json") }),
-                  fresh.packageScripts.contains(where: { $0.name == command.scriptName }),
+            guard (command.map { selected in
+                !fresh.issues.contains(where: { $0.source.hasPrefix("package.json") })
+                    && fresh.packageScripts.contains(where: { $0.name == selected.scriptName })
+            } ?? true),
                   profile.isTrusted(projectID: project.id, root: project.rootDirectory,
                                     packageDigest: fresh.packageDigest,
-                                    composeDigest: fresh.composeDigest) else {
+                                    composeDigest: fresh.composeDigest,
+                                    javaDigest: freshJava?.digest) else {
                 throw ProjectExecutionFailure.sourceChanged
             }
             guard let url = readinessURL(for: project.id, compose: false) else {
@@ -409,19 +457,36 @@ final class WorkspaceStore {
                 throw ProjectExecutionFailure.sourceChanged
             }
             let latest = try await configurationReader.read(root: project.rootDirectory)
+            let latestJava: JavaArchiveSource?
+            if let java { latestJava = try await javaArchiveReader.read(root: project.rootDirectory, archive: java) }
+            else { latestJava = nil }
             try Task.checkCancellation()
             guard latest.packageDigest == fresh.packageDigest,
-                  !latest.issues.contains(where: { $0.source.hasPrefix("package.json") }) else {
+                  latestJava?.digest == freshJava?.digest,
+                  (command == nil || !latest.issues.contains(where: { $0.source.hasPrefix("package.json") })) else {
                 throw ProjectExecutionFailure.sourceChanged
             }
-            guard let executable = npmExecutable,
+            guard let executable = java.map({ URL(fileURLWithPath: $0.executablePath) }) ?? npmExecutable,
                   FileManager.default.isExecutableFile(atPath: executable.path) else {
                 throw ProjectExecutionFailure.executableUnavailable
+            }
+            if java != nil {
+                var info = stat()
+                guard lstat(executable.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else {
+                    throw ProjectExecutionFailure.executableUnavailable
+                }
             }
             executionPhase = .launching
             let process = Process()
             process.executableURL = executable
-            process.arguments = ["run", command.scriptName]
+            if let java {
+                let archiveURL = project.rootDirectory.appendingPathComponent(java.relativePath)
+                process.arguments = ["-jar", archiveURL.path]
+                    + (java.springProfile.map { ["--spring.profiles.active=\($0)"] } ?? [])
+                    + (java.serverPort.map { ["--server.port=\($0)"] } ?? [])
+            } else if let command {
+                process.arguments = ["run", command.scriptName]
+            }
             process.currentDirectoryURL = project.rootDirectory
             process.standardInput = FileHandle.nullDevice
             // Script output may include credentials; this first execution slice records only
@@ -432,48 +497,121 @@ final class WorkspaceStore {
                                    "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
                                    "LC_ALL": "C", "npm_config_update_notifier": "false"]
             try Task.checkCancellation()
-            do { try process.run() } catch { throw ProjectExecutionFailure.launchFailed }
+            var pending = PendingProjectLaunch(projectID: project.id, rootDirectory: project.rootDirectory,
+                                               commandLabel: java.map { "java -jar \($0.relativePath)" }
+                                                 ?? "npm run \(command?.scriptName ?? "")", pid: nil, createdAt: .now)
+            var journal = catalog
+            journal.pendingProjectLaunches.append(pending)
+            do { try persist(journal) } catch { throw ProjectExecutionFailure.persistenceFailed }
+            do { try process.run() }
+            catch {
+                _ = clearPendingProjectLaunch(project.id)
+                throw ProjectExecutionFailure.launchFailed
+            }
             ownedProcess = process
-            let inspected = try await identifyLaunchedProcess(process, project: project)
+            pending.pid = process.processIdentifier
+            journal = catalog
+            journal.pendingProjectLaunches.removeAll { $0.projectID == project.id }
+            journal.pendingProjectLaunches.append(pending)
+            do { try persist(journal) } catch { throw ProjectExecutionFailure.persistenceFailed }
+            let inspected = try await identifyLaunchedProcess(process, project: project,
+                                                              expectedExecutable: java == nil ? "node" : "java")
             let record = ManagedProjectProcess(projectID: project.id, rootDirectory: project.rootDirectory,
-                                               scriptName: command.scriptName, identity: inspected.identity,
-                                               launchedAt: .now)
+                                               scriptName: command?.scriptName ?? "java", identity: inspected.identity,
+                                               launchedAt: .now, javaArchiveRelativePath: java?.relativePath)
             transientManagedProcess = record
             var updated = catalog
             updated.managedProcesses.removeAll { $0.projectID == project.id }
             updated.managedProcesses.append(record)
+            updated.pendingProjectLaunches.removeAll { $0.projectID == project.id }
             do { try persist(updated); transientManagedProcess = nil }
             catch { throw ProjectExecutionFailure.persistenceFailed }
             try Task.checkCancellation()
             await waitUntilReady(record, project: project, url: url)
         } catch is CancellationError {
             if let record = managedProcess { await performStop(record, project: project) }
-            else { await cleanupUnregisteredProcess(project: project) }
-            if managedProcess == nil { executionPhase = .cancelled }
+            else {
+                let resolved = await cleanupUnregisteredProcess(project: project)
+                executionPhase = resolved ? .cancelled : .failed(.identityUncertain)
+            }
         } catch let failure as ProjectExecutionFailure {
-            if managedProcess == nil { await cleanupUnregisteredProcess(project: project) }
-            executionPhase = .failed(failure)
+            let resolved: Bool
+            if managedProcess != nil { resolved = true }
+            else { resolved = await cleanupUnregisteredProcess(project: project) }
+            executionPhase = .failed(resolved ? failure : .identityUncertain)
         } catch {
-            if managedProcess == nil { await cleanupUnregisteredProcess(project: project) }
-            executionPhase = .failed(.sourceChanged)
+            let resolved: Bool
+            if managedProcess != nil { resolved = true }
+            else { resolved = await cleanupUnregisteredProcess(project: project) }
+            executionPhase = .failed(resolved ? .sourceChanged : .identityUncertain)
         }
     }
 
-    private func cleanupUnregisteredProcess(project: ProjectReference) async {
-        guard let process = ownedProcess, process.isRunning,
-              let inspected = try? processInspector.inspect(pid: process.processIdentifier),
+    private func cleanupUnregisteredProcess(project: ProjectReference) async -> Bool {
+        guard catalog.pendingProjectLaunches.contains(where: { $0.projectID == project.id }) else {
+            return true
+        }
+        guard let process = ownedProcess else {
+            // A journal without an in-memory Process handle may survive a crash. No PID
+            // is safe to signal from that journal alone; the user must resolve it.
+            return false
+        }
+        if !process.isRunning { ownedProcess = nil; return clearPendingProjectLaunch(project.id) }
+        guard let inspected = try? processInspector.inspect(pid: process.processIdentifier),
+              inspected.identity.pid == process.processIdentifier,
               inspected.identity.userID == getuid(),
-              inspected.workingDirectory == project.rootDirectory else { return }
+              URL(fileURLWithPath: inspected.identity.executablePath).lastPathComponent
+                == (pendingProjectLaunch?.commandLabel.hasPrefix("java -jar") == true ? "java" : "node"),
+              inspected.workingDirectory?.standardizedFileURL.resolvingSymlinksInPath()
+                == project.rootDirectory.standardizedFileURL.resolvingSymlinksInPath() else { return false }
         // Launch failed before persistence. The live Process handle and native identity
         // still have to agree before signalling even this just-created child.
-        guard Darwin.kill(inspected.identity.pid, SIGTERM) == 0 else { return }
+        guard Darwin.kill(inspected.identity.pid, SIGTERM) == 0 else { return false }
         for _ in 0..<30 where process.isRunning {
             await Task.detached { try? await Task.sleep(for: .milliseconds(100)) }.value
         }
-        if !process.isRunning { ownedProcess = nil }
+        guard !process.isRunning else { return false }
+        ownedProcess = nil
+        return clearPendingProjectLaunch(project.id)
     }
 
-    private func identifyLaunchedProcess(_ process: Process, project: ProjectReference) async throws -> InspectedProcess {
+    private func clearPendingProjectLaunch(_ id: ProjectIdentifier) -> Bool {
+        var updated = catalog
+        updated.pendingProjectLaunches.removeAll { $0.projectID == id }
+        do { try persist(updated); return true } catch { return false }
+    }
+
+    func retryPendingProjectCleanup() {
+        guard !hasActiveControlTask, let project, pendingProjectLaunch != nil else { return }
+        executionTask = Task { [weak self] in
+            guard let self else { return }
+            self.executionPhase = .stopping
+            let resolved = await self.cleanupUnregisteredProcess(project: project)
+            self.executionPhase = resolved ? .stopped : .failed(.identityUncertain)
+            self.executionTask = nil
+        }
+    }
+
+    /// The UI requires an explicit external-cleanup confirmation. A still-live recorded
+    /// PID blocks forgetting, even when its identity cannot be read safely enough to stop.
+    func acknowledgePendingProjectLaunch() {
+        guard !hasActiveControlTask, let pending = pendingProjectLaunch else { return }
+        guard ownedProcess?.isRunning != true else {
+            executionPhase = .failed(.identityUncertain)
+            return
+        }
+        if let pid = pending.pid {
+            guard Darwin.kill(pid, 0) != 0, errno == ESRCH else {
+                executionPhase = .failed(.identityUncertain)
+                return
+            }
+        }
+        executionPhase = clearPendingProjectLaunch(pending.projectID)
+            ? .stopped : .failed(.persistenceFailed)
+    }
+
+    private func identifyLaunchedProcess(_ process: Process, project: ProjectReference,
+                                         expectedExecutable: String) async throws -> InspectedProcess {
         var last: ProcessIdentity?
         for _ in 0..<20 {
             try Task.checkCancellation()
@@ -481,7 +619,7 @@ final class WorkspaceStore {
             if let inspected = try? processInspector.inspect(pid: process.processIdentifier),
                inspected.identity.userID == getuid(),
                inspected.workingDirectory == project.rootDirectory,
-               URL(fileURLWithPath: inspected.identity.executablePath).lastPathComponent == "node" {
+               URL(fileURLWithPath: inspected.identity.executablePath).lastPathComponent == expectedExecutable {
                 if last == inspected.identity { return inspected }
                 last = inspected.identity
             }
@@ -502,6 +640,7 @@ final class WorkspaceStore {
                 guard ManagedProcessSafety.isSameOwnedProjectProcess(inspected, as: record,
                     project: project, userID: getuid()) else { throw ProjectExecutionFailure.identityUncertain }
                 if (try? await readinessProbe.probe(url)) == true {
+                    applicationReadyCheckedAt = .now
                     executionPhase = .ready
                     return
                 }
@@ -519,6 +658,7 @@ final class WorkspaceStore {
     }
 
     private func performStop(_ record: ManagedProjectProcess, project: ProjectReference) async {
+        applicationReadyCheckedAt = nil
         executionPhase = .stopping
         do {
             guard self.project?.id == project.id else { throw ProjectExecutionFailure.stopRefused }
@@ -561,6 +701,7 @@ final class WorkspaceStore {
     private func clearManagedProcess(_ record: ManagedProjectProcess) throws {
         var updated = catalog
         updated.managedProcesses.removeAll { $0.projectID == record.projectID && $0.identity == record.identity }
+        updated.pendingProjectLaunches.removeAll { $0.projectID == record.projectID }
         try persist(updated)
         transientManagedProcess = nil
         ownedProcess = nil
@@ -572,8 +713,14 @@ final class WorkspaceStore {
             : catalog.managedComposeRuns.first { $0.projectID == project.id }
     }
 
+    var pendingComposeStart: PendingComposeStart? {
+        guard let project else { return nil }
+        return catalog.pendingComposeStarts.first { $0.projectID == project.id }
+    }
+
     func startSelectedCompose() {
-        guard !hasActiveControlTask, managedComposeRun == nil, let project else { return }
+        guard !hasActiveControlTask, managedComposeRun == nil, pendingComposeStart == nil,
+              let project else { return }
         composeTask = Task { [weak self] in
             guard let self else { return }
             await self.performComposeStart(project)
@@ -614,6 +761,10 @@ final class WorkspaceStore {
                   profile.trust != nil else { throw ComposeExecutionFailure.noTrustedConfiguration }
             configurationName = name
             let fresh = try await configurationReader.read(root: project.rootDirectory)
+            let freshJava: JavaArchiveSource?
+            if let archive = profile.javaArchive {
+                freshJava = try await javaArchiveReader.read(root: project.rootDirectory, archive: archive)
+            } else { freshJava = nil }
             try Task.checkCancellation()
             guard revision == selectionRevision, self.project?.id == project.id,
                   preferences(for: project.id).profile == profile else {
@@ -623,7 +774,7 @@ final class WorkspaceStore {
                   let currentDigest = fresh.composeDigest,
                   profile.isTrusted(projectID: project.id, root: project.rootDirectory,
                                     packageDigest: fresh.packageDigest,
-                                    composeDigest: currentDigest) else {
+                                    composeDigest: currentDigest, javaDigest: freshJava?.digest) else {
                 throw ComposeExecutionFailure.sourceChanged
             }
             digest = currentDigest
@@ -641,11 +792,21 @@ final class WorkspaceStore {
                 throw ComposeExecutionFailure.sourceChanged
             }
             let latest = try await configurationReader.read(root: project.rootDirectory)
+            let latestJava: JavaArchiveSource?
+            if let archive = profile.javaArchive {
+                latestJava = try await javaArchiveReader.read(root: project.rootDirectory, archive: archive)
+            } else { latestJava = nil }
             try Task.checkCancellation()
             guard latest.composeConfigurationName == name,
-                  latest.composeDigest == currentDigest else {
+                  latest.composeDigest == currentDigest,
+                  latestJava?.digest == freshJava?.digest else {
                 throw ComposeExecutionFailure.sourceChanged
             }
+            var journal = catalog
+            journal.pendingComposeStarts.append(PendingComposeStart(projectID: project.id,
+                rootDirectory: project.rootDirectory, configurationName: name,
+                configurationDigest: currentDigest, baselineContainerIDs: baseline.sorted(), createdAt: .now))
+            do { try persist(journal) } catch { throw ComposeExecutionFailure.persistenceFailed }
             composePhase = .starting
             attemptedStart = true
             try await composeController.start(root: project.rootDirectory, configurationName: name)
@@ -665,6 +826,10 @@ final class WorkspaceStore {
                 if let run = try? await captureStartedComposeRun(project: project, name: name,
                                                                  digest: digest, baseline: baseline) {
                     try? saveComposeRun(run)
+                } else if let status = try? await composeController.read(root: project.rootDirectory),
+                          status.configurationName == name,
+                          status.containers.filter({ $0.state == .running && !baseline.contains($0.id) }).isEmpty {
+                    _ = clearPendingComposeStart(project.id)
                 }
             }
             composePhase = .failed(failure)
@@ -698,6 +863,7 @@ final class WorkspaceStore {
         var updated = catalog
         updated.managedComposeRuns.removeAll { $0.projectID == run.projectID }
         updated.managedComposeRuns.append(run)
+        updated.pendingComposeStarts.removeAll { $0.projectID == run.projectID }
         do { try persist(updated); transientComposeRun = nil }
         catch { throw ComposeExecutionFailure.persistenceFailed }
     }
@@ -724,6 +890,7 @@ final class WorkspaceStore {
                     httpReady = (try? await readinessProbe.probe(url)) == true
                 } else { httpReady = false }
                 if running && (healthReady || httpReady) {
+                    composeReadyCheckedAt = .now
                     composePhase = .ready
                     return
                 }
@@ -750,7 +917,7 @@ final class WorkspaceStore {
                 await performComposeStop(run, project: project)
                 if managedComposeRun == nil { composePhase = .cancelled }
             } catch ComposeExecutionFailure.noStartedContainers {
-                composePhase = .cancelled
+                composePhase = clearPendingComposeStart(project.id) ? .cancelled : .failed(.persistenceFailed)
             } catch {
                 composePhase = .failed(.attributionUncertain)
             }
@@ -758,6 +925,7 @@ final class WorkspaceStore {
     }
 
     private func performComposeStop(_ run: ManagedComposeRun, project: ProjectReference) async {
+        composeReadyCheckedAt = nil
         composePhase = .stopping
         do {
             guard self.project?.id == project.id,
@@ -779,6 +947,7 @@ final class WorkspaceStore {
                   }) else { throw ComposeExecutionFailure.stopRefused }
             var updated = catalog
             updated.managedComposeRuns.removeAll { $0.projectID == run.projectID && $0.containerIDs == run.containerIDs }
+            updated.pendingComposeStarts.removeAll { $0.projectID == run.projectID }
             try persist(updated)
             transientComposeRun = nil
             composePhase = .stopped
@@ -786,6 +955,190 @@ final class WorkspaceStore {
             composePhase = .failed(failure)
         } catch {
             composePhase = .failed(.stopRefused)
+        }
+    }
+
+    private func clearPendingComposeStart(_ id: ProjectIdentifier) -> Bool {
+        var updated = catalog
+        updated.pendingComposeStarts.removeAll { $0.projectID == id }
+        do { try persist(updated); return true } catch { return false }
+    }
+
+    func startSelectedWorkspace() {
+        guard !hasActiveControlTask, let project else { return }
+        workspaceTask = Task { [weak self] in
+            guard let self else { return }
+            await self.performWorkspaceStart(project)
+            self.workspaceTask = nil
+        }
+    }
+
+    func cancelSelectedWorkspaceStart() { workspaceTask?.cancel() }
+
+    func stopSelectedWorkspace() {
+        guard !hasActiveControlTask, let project else { return }
+        workspaceTask = Task { [weak self] in
+            guard let self else { return }
+            await self.performWorkspaceStop(project)
+            self.workspaceTask = nil
+        }
+    }
+
+    private func performWorkspaceStart(_ selected: ProjectReference) async {
+        workspacePhase = .validating
+        var startedCompose = false
+        var startedApplication = false
+        do {
+            guard project?.id == selected.id,
+                  let profile = preferences(for: selected.id).profile,
+                  profile.trust != nil,
+                  profile.javaArchive != nil || profile.commands.contains(where: { $0.role == .start }) else {
+                throw WorkspaceControlFailure.noTrustedProfile
+            }
+            guard pendingProjectLaunch == nil, pendingComposeStart == nil else {
+                throw WorkspaceControlFailure.pendingRecovery
+            }
+            if !profile.homebrewServices.isEmpty {
+                let previous = homebrewServices
+                let statuses: [HomebrewServiceStatus]
+                // A cached green status is not sufficient to authorize this launch;
+                // read every declared service again even if a UI refresh is in flight.
+                do { statuses = try await homebrewReader.read(names: profile.homebrewServices) }
+                catch is CancellationError { throw CancellationError() }
+                catch {
+                    homebrewServices = SourceReading<[HomebrewServiceStatus]>.failed(error)
+                        .retainingTrustedValue(from: previous)
+                    throw WorkspaceControlFailure.homebrewNotReady
+                }
+                try Task.checkCancellation()
+                guard project?.id == selected.id,
+                      preferences(for: selected.id).profile == profile else {
+                    throw WorkspaceControlFailure.noTrustedProfile
+                }
+                homebrewServices = .success(statuses)
+                guard statuses.count == profile.homebrewServices.count,
+                      Set(statuses.map(\.name)) == Set(profile.homebrewServices),
+                      statuses.allSatisfy({ $0.state == .running }) else {
+                    throw WorkspaceControlFailure.homebrewNotReady
+                }
+            }
+            if let name = profile.composeConfigurationName {
+                workspacePhase = .startingDependencies
+                if let run = managedComposeRun {
+                    await waitUntilComposeReady(run, project: selected)
+                    try Task.checkCancellation()
+                    guard composePhase == .ready else { throw WorkspaceControlFailure.composeNotReady }
+                } else if try await externalComposeIsReady(project: selected, configurationName: name) {
+                    composeReadyCheckedAt = .now
+                } else {
+                    await performComposeStart(selected)
+                    startedCompose = managedComposeRun != nil
+                    try Task.checkCancellation()
+                    guard composePhase == .ready else { throw WorkspaceControlFailure.composeNotReady }
+                }
+            }
+            try Task.checkCancellation()
+            workspacePhase = .startingApplication
+            if let record = managedProcess {
+                guard let url = readinessURL(for: selected.id, compose: false) else {
+                    throw WorkspaceControlFailure.applicationNotReady
+                }
+                await waitUntilReady(record, project: selected, url: url)
+            } else {
+                await performStart(selected)
+                startedApplication = managedProcess != nil
+            }
+            try Task.checkCancellation()
+            guard executionPhase == .ready else { throw WorkspaceControlFailure.applicationNotReady }
+            try Task.checkCancellation()
+            workspacePhase = .ready
+        } catch is CancellationError {
+            // Cancellation rolls back only resources launched by this action, never
+            // externally running dependencies or a process inherited from an earlier run.
+            let recovered = await rollbackWorkspaceLaunch(project: selected,
+                application: startedApplication, compose: startedCompose)
+            workspacePhase = recovered ? .cancelled : .failed(.stopRefused)
+        } catch let failure as WorkspaceControlFailure {
+            let recovered = await rollbackWorkspaceLaunch(project: selected,
+                application: startedApplication, compose: startedCompose)
+            workspacePhase = .failed(recovered ? failure : .stopRefused)
+        } catch {
+            let recovered = await rollbackWorkspaceLaunch(project: selected,
+                application: startedApplication, compose: startedCompose)
+            workspacePhase = .failed(recovered ? .applicationNotReady : .stopRefused)
+        }
+    }
+
+    private func rollbackWorkspaceLaunch(project: ProjectReference,
+                                         application: Bool, compose: Bool) async -> Bool {
+        // A fresh task keeps cleanup moving even when the launching task was cancelled.
+        // Existing or externally owned services are never part of this rollback.
+        await Task { @MainActor in
+            if application, let record = managedProcess { await performStop(record, project: project) }
+            if compose, let run = managedComposeRun { await performComposeStop(run, project: project) }
+            return (!application || managedProcess == nil)
+                && (!compose || managedComposeRun == nil)
+                && pendingProjectLaunch == nil && pendingComposeStart == nil
+        }.value
+    }
+
+    private func externalComposeIsReady(project: ProjectReference,
+                                        configurationName: String) async throws -> Bool {
+        guard let status = try await composeController.read(root: project.rootDirectory),
+              status.configurationName == configurationName, !status.containers.isEmpty else { return false }
+        let running = status.containers.allSatisfy { $0.state == .running && $0.health != .unhealthy }
+        let healthy = status.containers.allSatisfy { $0.health == .healthy }
+        let http: Bool
+        if let url = readinessURL(for: project.id, compose: true) {
+            http = (try? await readinessProbe.probe(url)) == true
+        } else { http = false }
+        return running && (healthy || http)
+    }
+
+    private func performWorkspaceStop(_ selected: ProjectReference) async {
+        guard project?.id == selected.id,
+              pendingProjectLaunch == nil, pendingComposeStart == nil else {
+            workspacePhase = .failed(.pendingRecovery)
+            return
+        }
+        if let record = managedProcess {
+            workspacePhase = .stoppingApplication
+            await performStop(record, project: selected)
+            guard managedProcess == nil else { workspacePhase = .failed(.stopRefused); return }
+        }
+        if let run = managedComposeRun {
+            workspacePhase = .stoppingDependencies
+            await performComposeStop(run, project: selected)
+            guard managedComposeRun == nil else { workspacePhase = .failed(.stopRefused); return }
+        }
+        workspacePhase = .stopped
+    }
+
+    func recoverPendingComposeStart() {
+        guard !hasActiveControlTask, let project, let pending = pendingComposeStart else { return }
+        composeTask = Task { [weak self] in
+            guard let self else { return }
+            self.composePhase = .validating
+            do {
+                let baseline = Set(pending.baselineContainerIDs)
+                do {
+                    let run = try await self.captureStartedComposeRun(project: project,
+                        name: pending.configurationName, digest: pending.configurationDigest, baseline: baseline)
+                    try self.saveComposeRun(run)
+                    self.composePhase = .recoveryRequired
+                } catch ComposeExecutionFailure.noStartedContainers {
+                    guard let status = try await self.composeController.read(root: project.rootDirectory),
+                          status.configurationName == pending.configurationName else {
+                        throw ComposeExecutionFailure.attributionUncertain
+                    }
+                    self.composePhase = self.clearPendingComposeStart(project.id)
+                        ? .stopped : .failed(.persistenceFailed)
+                }
+            } catch {
+                // Keep the journal: uncertainty is never permission to forget possible containers.
+                self.composePhase = .failed(.attributionUncertain)
+            }
+            self.composeTask = nil
         }
     }
 
@@ -797,24 +1150,33 @@ final class WorkspaceStore {
               profile.commands.isEmpty || value.packageDigest != nil,
               profile.composeConfigurationName == nil
                 || (profile.composeConfigurationName == value.composeConfigurationName
-                    && value.composeDigest != nil) else { return .needsScan }
+                    && value.composeDigest != nil),
+              profile.javaArchive == nil || (javaArchiveSource?.failure == nil
+                    && javaArchiveSource?.value?.digest != nil) else { return .needsScan }
         return profile.isTrusted(projectID: project.id, root: project.rootDirectory,
-                                 packageDigest: value.packageDigest, composeDigest: value.composeDigest)
+                                 packageDigest: value.packageDigest, composeDigest: value.composeDigest,
+                                 javaDigest: javaArchiveSource?.value?.digest)
             ? .trusted : .sourceChanged
     }
 
     func trustProfile(for id: ProjectIdentifier, reviewed: ProjectProfile,
-                      packageDigest: String?, composeDigest: String? = nil) async throws {
+                      packageDigest: String?, composeDigest: String? = nil,
+                      javaDigest: String? = nil) async throws {
         guard let project, project.id == id, !catalogLoadBlocked,
               preferences(for: id).profile == reviewed else { throw ProfileFailure.projectChanged }
         let revision = selectionRevision
         // Re-read before recording trust so a changed repository cannot reuse an old preview.
         let fresh = try await configurationReader.read(root: project.rootDirectory)
+        let freshJava: JavaArchiveSource?
+        if let archive = reviewed.javaArchive {
+            freshJava = try await javaArchiveReader.read(root: project.rootDirectory, archive: archive)
+        } else { freshJava = nil }
         try Task.checkCancellation()
         guard revision == selectionRevision, self.project?.id == id,
               preferences(for: id).profile == reviewed else { throw ProfileFailure.projectChanged }
         guard !fresh.issues.contains(where: { $0.source.hasPrefix("package.json") }),
               fresh.packageDigest == packageDigest,
+              freshJava?.digest == javaDigest,
               reviewed.composeConfigurationName == nil
                 || (fresh.composeConfigurationName == reviewed.composeConfigurationName
                     && fresh.composeDigest == composeDigest) else { throw ProfileFailure.reviewChanged }
@@ -823,7 +1185,8 @@ final class WorkspaceStore {
         }) else { throw ProfileFailure.missingScript }
         guard let fingerprint = reviewed.fingerprint(projectID: id, root: project.rootDirectory,
                                                     packageDigest: fresh.packageDigest,
-                                                    composeDigest: fresh.composeDigest) else {
+                                                    composeDigest: fresh.composeDigest,
+                                                    javaDigest: freshJava?.digest) else {
             throw ProfileFailure.invalidProfile
         }
         var preferences = preferences(for: id)
@@ -831,6 +1194,7 @@ final class WorkspaceStore {
         trusted.trust = ProfileTrust(fingerprint: fingerprint, acceptedAt: .now)
         preferences.profile = trusted
         try savePreferences(preferences)
+        if let freshJava { javaArchiveSource = .success(freshJava) }
     }
 
     func discoverConfiguration() async {
@@ -883,13 +1247,20 @@ final class WorkspaceStore {
         discovery = nil
         isDiscovering = false
         homebrewServices = nil
+        javaArchiveSource = nil
+        applicationReadyCheckedAt = nil
+        composeReadyCheckedAt = nil
         homebrewRevision += 1
         isRefreshingHomebrewServices = false
         executionTask?.cancel()
         composeTask?.cancel()
         executionPhase = catalog.managedProcesses.contains(where: { $0.projectID == selected?.id })
+            || catalog.pendingProjectLaunches.contains(where: { $0.projectID == selected?.id })
             ? .recoveryRequired : .idle
         composePhase = catalog.managedComposeRuns.contains(where: { $0.projectID == selected?.id })
+            || catalog.pendingComposeStarts.contains(where: { $0.projectID == selected?.id })
+            ? .recoveryRequired : .idle
+        workspacePhase = executionPhase == .recoveryRequired || composePhase == .recoveryRequired
             ? .recoveryRequired : .idle
         project = selected
         state = .idle
@@ -903,6 +1274,136 @@ final class WorkspaceStore {
             previous
         case let .ready(snapshot), let .degraded(snapshot, _):
             snapshot
+        }
+    }
+
+    var operationalLifecycle: WorkspaceLifecycle {
+        guard let project,
+              let profile = preferences(for: project.id).profile,
+              profile.javaArchive != nil || profile.commands.contains(where: { $0.role == .start }) else {
+            return .observed
+        }
+        if pendingProjectLaunch != nil || pendingComposeStart != nil { return .degraded }
+        switch workspacePhase {
+        case .validating, .startingDependencies, .startingApplication,
+             .stoppingApplication, .stoppingDependencies: return .starting
+        case .failed: return .failed
+        case .recoveryRequired: return .degraded
+        case .idle, .ready, .stopped, .cancelled: break
+        }
+        if case .failed = executionPhase { return .degraded }
+        if case .failed = composePhase { return .degraded }
+        // A previously successful HTTP response expires; refresh must verify it again.
+        // Background polling is at most five minutes, so six minutes allows one cycle.
+        let applicationReady = managedProcess != nil && executionPhase == .ready
+            && ownedProcess?.isRunning != false
+            && applicationReadyCheckedAt.map { Date.now.timeIntervalSince($0) < 360 } == true
+        let homebrewReady = profile.homebrewServices.isEmpty
+            || (homebrewServices?.failure == nil
+                && homebrewServices?.value?.count == profile.homebrewServices.count
+                && Set(homebrewServices?.value?.map(\.name) ?? []) == Set(profile.homebrewServices)
+                && homebrewServices?.value?.allSatisfy({ $0.state == .running }) == true)
+        let composeReady = profile.composeConfigurationName == nil
+            || ((composePhase == .ready || workspacePhase == .ready)
+                && composeReadyCheckedAt.map { Date.now.timeIntervalSince($0) < 360 } == true)
+        if applicationReady && homebrewReady && composeReady { return .ready }
+        if managedProcess != nil || managedComposeRun != nil { return .degraded }
+        return .stopped
+    }
+
+    var readyPrimaryURL: URL? {
+        guard operationalLifecycle == .ready, let project else { return nil }
+        return readinessURL(for: project.id, compose: false)
+    }
+
+    var presentationSnapshot: WorkspaceSnapshot? { currentSnapshot.map(present) }
+
+    var presentationState: State {
+        switch state {
+        case .idle, .failed: state
+        case let .refreshing(previous): .refreshing(previous: previous.map(present))
+        case let .ready(snapshot): .ready(present(snapshot))
+        case let .degraded(snapshot, message): .degraded(snapshot: present(snapshot), message: message)
+        }
+    }
+
+    private func present(_ snapshot: WorkspaceSnapshot) -> WorkspaceSnapshot {
+        guard snapshot.project.id == project?.id, snapshot.origin == .local else { return snapshot }
+        var services: [ServiceSummary] = []
+        if let profile = preferences(for: snapshot.project.id).profile {
+            for name in profile.homebrewServices {
+                let running = homebrewServices?.failure == nil
+                    && homebrewServices?.value?.first(where: { $0.name == name })?.state == .running
+                services.append(ServiceSummary(id: "homebrew:\(name)", name: name, kind: .dependency,
+                                               health: running ? .healthy : .unknown, port: nil))
+            }
+            if profile.javaArchive != nil || profile.commands.contains(where: { $0.role == .start }) {
+                let port = readinessURL(for: snapshot.project.id, compose: false)
+                    .flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.port }
+                    .flatMap(UInt16.init)
+                services.append(ServiceSummary(id: "application", name: snapshot.project.name,
+                    kind: .application, health: applicationReadyCheckedAt.map { Date.now.timeIntervalSince($0) < 360 } == true
+                        && executionPhase == .ready && ownedProcess?.isRunning != false ? .healthy
+                        : managedProcess == nil ? .stopped : .unknown, port: port))
+            }
+        }
+        if snapshot.readings?.compose?.failure == nil {
+            for container in snapshot.readings?.compose?.value?.containers ?? [] {
+                let health: ServiceHealth = switch (container.state, container.health) {
+                case (.running, .healthy): .healthy
+                case (.running, .unhealthy): .unhealthy
+                case (.running, .starting): .starting
+                case (.running, nil): .unknown
+                default: .stopped
+                }
+                services.append(ServiceSummary(id: "compose:\(container.id)", name: container.serviceName,
+                    kind: .container, health: health, port: container.ports.first?.published))
+            }
+        }
+        return WorkspaceSnapshot(project: snapshot.project, lifecycle: operationalLifecycle,
+            git: snapshot.git, services: services, observedAt: snapshot.observedAt,
+            freshness: snapshot.freshness, origin: snapshot.origin, readings: snapshot.readings)
+    }
+
+    private func verifyOperationalReadiness(project: ProjectReference, revision: Int) async {
+        if let record = managedProcess, executionPhase == .ready,
+           let url = readinessURL(for: project.id, compose: false) {
+            let identityMatches = (try? processInspector.inspect(pid: record.identity.pid)).map {
+                ManagedProcessSafety.isSameOwnedProjectProcess($0, as: record,
+                    project: project, userID: getuid())
+            } == true
+            let responds: Bool
+            if identityMatches { responds = (try? await readinessProbe.probe(url)) == true }
+            else { responds = false }
+            guard revision == selectionRevision else { return }
+            applicationReadyCheckedAt = responds ? .now : nil
+        }
+        if let name = preferences(for: project.id).profile?.composeConfigurationName,
+           composePhase == .ready || workspacePhase == .ready {
+            let status = try? await composeController.read(root: project.rootDirectory)
+            guard revision == selectionRevision else { return }
+            let containers: [ComposeContainer]?
+            if let status, status.configurationName == name, let run = managedComposeRun {
+                let matches = run.containerIDs.compactMap { id in status.containers.first { $0.id == id } }
+                containers = matches.count == run.containerIDs.count ? matches : nil
+            } else if let status, status.configurationName == name {
+                containers = status.containers
+            } else { containers = nil }
+            if let containers {
+                let running = !containers.isEmpty && containers.allSatisfy {
+                    $0.state == .running && $0.health != .unhealthy
+                }
+                let healthy = containers.allSatisfy { $0.health == .healthy }
+                let responds: Bool
+                if let url = readinessURL(for: project.id, compose: true) {
+                    responds = (try? await readinessProbe.probe(url)) == true
+                } else { responds = false }
+                guard revision == selectionRevision else { return }
+                composeReadyCheckedAt = running && (healthy || responds) ? .now : nil
+            } else { composeReadyCheckedAt = nil }
+        }
+        if !((preferences(for: project.id).profile?.homebrewServices) ?? []).isEmpty {
+            await refreshHomebrewServices()
         }
     }
 
@@ -944,11 +1445,15 @@ final class WorkspaceStore {
                 snapshot = WorkspaceSnapshot(project: project, lifecycle: .observed, git: merged.git.value,
                                              services: [], observedAt: snapshot.observedAt, freshness: .current,
                                              origin: .local, readings: merged)
+                await verifyOperationalReadiness(project: project, revision: revision)
+                guard revision == selectionRevision else { return }
                 state = merged.hasFailure ? .degraded(snapshot: snapshot, message: .partialRead) : .ready(snapshot)
                 return
             }
             // 数据源可以返回历史缓存；即使调用成功，也不能把明确标记为 stale 的快照
             // 提升为 Ready，否则会破坏“旧数据不得伪装为实时状态”的可信边界。
+            await verifyOperationalReadiness(project: project, revision: revision)
+            guard revision == selectionRevision else { return }
             state = snapshot.freshness == .current
                 ? .ready(snapshot)
                 : .degraded(
