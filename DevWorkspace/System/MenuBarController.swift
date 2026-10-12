@@ -20,6 +20,7 @@ final class MenuBarController: NSObject {
     private let shortcutSettings: AppShortcutSettings
     private let notificationSettings: NotificationSettings
     private let notificationManager: any UserNotificationManaging
+    private let updateController: WorkspaceUpdateController?
     private let refreshController: WorkspaceRefreshController
     private let statusItem: NSStatusItem
     private let popover: NSPopover
@@ -48,6 +49,7 @@ final class MenuBarController: NSObject {
         shortcutSettings: AppShortcutSettings,
         notificationSettings: NotificationSettings = NotificationSettings(),
         notificationManager: any UserNotificationManaging = SystemUserNotificationManager(),
+        updateController: WorkspaceUpdateController? = nil,
         refreshController: WorkspaceRefreshController? = nil
     ) {
         self.store = store
@@ -56,6 +58,7 @@ final class MenuBarController: NSObject {
         self.shortcutSettings = shortcutSettings
         self.notificationSettings = notificationSettings
         self.notificationManager = notificationManager
+        self.updateController = updateController
         self.refreshController = refreshController
             ?? WorkspaceRefreshController(store: store)
         statusItem = NSStatusBar.system.statusItem(
@@ -455,7 +458,8 @@ final class MenuBarController: NSObject {
                     shortcutSettings: shortcutSettings,
                     appearanceSettings: appearanceSettings,
                     notificationSettings: notificationSettings,
-                    notificationManager: notificationManager
+                    notificationManager: notificationManager,
+                    updateController: updateController
                 )
             )
             let window = NSWindow(contentViewController: hostingController)

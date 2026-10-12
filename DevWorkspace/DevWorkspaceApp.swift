@@ -12,7 +12,8 @@ struct DevWorkspaceApp: App {
                 shortcutSettings: applicationDelegate.shortcutSettings,
                 appearanceSettings: applicationDelegate.appearanceSettings,
                 notificationSettings: applicationDelegate.notificationSettings,
-                notificationManager: applicationDelegate.notificationManager
+                notificationManager: applicationDelegate.notificationManager,
+                updateController: applicationDelegate.updateController
             )
         }
     }

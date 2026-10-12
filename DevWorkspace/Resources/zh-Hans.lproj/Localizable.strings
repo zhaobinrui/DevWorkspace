@@ -137,16 +137,19 @@
 
 "settings.updates.version" = "版本";
 "settings.updates.build" = "构建版本";
+"settings.updates.check-now" = "检查更新…";
+"settings.updates.automatic-checks" = "自动检查更新";
+"settings.updates.network-note" = "启用后，DevWorkspace 会通过 HTTPS 检查签名更新源；不会发送项目数据或系统概况信息。";
+"settings.updates.not-configured" = "配置签名发行源之前，更新功能不可用。";
 
 "settings.license.independent-entitlement" = "独立权益";
 
 "policy.update.summary" = "每款 DevSpace App 独立检查并安装更新。";
-"policy.update.preview-status" = "当前预览版本尚未启用自动更新检查。";
 "policy.license.summary" = "DevMeter、DevWorkspace 和 DevMemory 分别维护独立权益。";
 "policy.license.bundle-rule" = "DevSpace Bundle 为每个已安装 App 提供独立权益，不形成运行时依赖。";
 "policy.license.preview-status" = "当前预览版本无需激活许可。";
 "policy.privacy.summary" = "本地优先：除非你明确授权未来的共享功能，否则项目数据仅保留在这台 Mac 上。";
-"policy.privacy.current-build" = "当前预览版本不会传输项目数据、进行跟踪或包含第三方运行时 SDK。";
+"policy.privacy.current-build" = "当前构建不会传输项目数据或进行跟踪。未配置签名发行源时 Sparkle 更新框架保持停用，系统概况采集也已关闭。";
 
 "workspace.action.refresh" = "刷新";
 "workspace.action.open" = "打开工作区";

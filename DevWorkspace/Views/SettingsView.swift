@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Bindable var appearanceSettings: AppearanceSettings
     @Bindable var notificationSettings: NotificationSettings
     let notificationManager: any UserNotificationManaging
+    var updateController: WorkspaceUpdateController? = nil
 
     var body: some View {
         TabView {
@@ -33,7 +34,7 @@ struct SettingsView: View {
                     Label("settings.tab.privacy", systemImage: "hand.raised")
                 }
 
-            UpdatesSettingsPane()
+            UpdatesSettingsPane(updateController: updateController)
                 .tabItem {
                     Label("settings.tab.updates", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
                 }
@@ -256,6 +257,7 @@ private struct PrivacySettingsPane: View {
 private struct UpdatesSettingsPane: View {
     @Environment(\.appLanguage) private var appLanguage
     private let version = AppVersion.current()
+    let updateController: WorkspaceUpdateController?
 
     var body: some View {
         SettingsPane(title: "settings.tab.updates") {
@@ -268,8 +270,28 @@ private struct UpdatesSettingsPane: View {
                 value: version.buildNumber
             )
             Text(DevSpaceUpdatePolicy.summary(in: appLanguage))
-            Text(DevSpaceUpdatePolicy.previewStatus(in: appLanguage))
+            if let updateController, updateController.isConfigured {
+                Button("settings.updates.check-now") {
+                    updateController.checkForUpdates()
+                }
+                .disabled(!updateController.canCheckForUpdates)
+
+                Toggle(
+                    "settings.updates.automatic-checks",
+                    isOn: Binding(
+                        get: { updateController.automaticallyChecksForUpdates },
+                        set: { updateController.setAutomaticallyChecksForUpdates($0) }
+                    )
+                )
+                Text("settings.updates.network-note")
+                    .settingsNote()
+            } else {
+                Label(
+                    "settings.updates.not-configured",
+                    systemImage: "exclamationmark.triangle"
+                )
                 .settingsNote()
+            }
         }
     }
 }

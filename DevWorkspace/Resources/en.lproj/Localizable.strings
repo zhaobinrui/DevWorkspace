@@ -137,16 +137,19 @@
 
 "settings.updates.version" = "Version";
 "settings.updates.build" = "Build";
+"settings.updates.check-now" = "Check for Updates…";
+"settings.updates.automatic-checks" = "Automatically check for updates";
+"settings.updates.network-note" = "When enabled, DevWorkspace checks its signed update feed over HTTPS. Project data and system profile information are not sent.";
+"settings.updates.not-configured" = "Updates are unavailable until a signed release feed is configured.";
 
 "settings.license.independent-entitlement" = "Independent entitlement";
 
 "policy.update.summary" = "Each DevSpace app checks and installs updates independently.";
-"policy.update.preview-status" = "Automatic update checks are not enabled in this preview build.";
 "policy.license.summary" = "DevMeter, DevWorkspace, and DevMemory keep independent entitlements.";
 "policy.license.bundle-rule" = "A DevSpace Bundle grants each installed app its own entitlement; it does not create a runtime dependency.";
 "policy.license.preview-status" = "This preview build does not require license activation.";
 "policy.privacy.summary" = "Local First: project data remains on this Mac unless you explicitly approve a future sharing feature.";
-"policy.privacy.current-build" = "This preview build does not transmit project data, use tracking, or include third-party runtime SDKs.";
+"policy.privacy.current-build" = "This build does not transmit project data or use tracking. The Sparkle update framework remains inactive until a signed feed is configured; system profiling is disabled.";
 
 "workspace.action.refresh" = "Refresh";
 "workspace.action.open" = "Open Workspace";

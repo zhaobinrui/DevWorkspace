@@ -11,9 +11,15 @@ team_id="$1"
 notary_profile="$2"
 output_dir="$3"
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+feed_url="${DEVWORKSPACE_UPDATE_FEED_URL:-}"
+public_key="${DEVWORKSPACE_UPDATE_PUBLIC_KEY:-}"
 
 [[ "$team_id" =~ ^[A-Z0-9]{10}$ ]] || usage
 [[ -n "$notary_profile" && "$output_dir" = /* ]] || usage
+[[ "$feed_url" =~ ^https://[^/@?#]+(/[^?#]*)?$ && "$public_key" =~ ^[A-Za-z0-9+/]{43}=$ ]] || {
+    printf 'Set the HTTPS DEVWORKSPACE_UPDATE_FEED_URL and EdDSA DEVWORKSPACE_UPDATE_PUBLIC_KEY before release.\n' >&2
+    exit 2
+}
 [[ ! -e "$output_dir" ]] || { printf 'Output directory already exists: %s\n' "$output_dir" >&2; exit 2; }
 [[ -z "$(git -C "$source_dir" status --porcelain)" ]] || {
     printf 'Commit or stash repository changes before creating a release.\n' >&2
@@ -40,6 +46,8 @@ xcodebuild -quiet \
     -derivedDataPath "$derived_data" \
     -archivePath "$archive" \
     "DEVELOPMENT_TEAM=$team_id" \
+    "DEVWORKSPACE_UPDATE_FEED_URL=$feed_url" \
+    "DEVWORKSPACE_UPDATE_PUBLIC_KEY=$public_key" \
     'CODE_SIGN_STYLE=Manual' \
     'CODE_SIGN_IDENTITY=Developer ID Application' \
     archive
@@ -51,6 +59,19 @@ xcodebuild -quiet -exportArchive \
 
 app="$export_dir/DevWorkspace.app"
 [[ -d "$app" ]] || { printf 'Exported app is missing.\n' >&2; exit 1; }
+[[ -f "$app/Contents/Resources/Sparkle-LICENSE.txt" ]] || {
+    printf 'Sparkle license notices are missing from the exported app.\n' >&2
+    exit 1
+}
+info_plist="$app/Contents/Info.plist"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$info_plist")" == "$feed_url" ]] || {
+    printf 'Exported app has an unexpected update feed.\n' >&2
+    exit 1
+}
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$info_plist")" == "$public_key" ]] || {
+    printf 'Exported app has an unexpected update signing key.\n' >&2
+    exit 1
+}
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$app"
 signature_info="$(/usr/bin/codesign -dvv "$app" 2>&1)"
 [[ "$signature_info" == *"Identifier=com.zhaobinrui.devspace.workspace"* ]] || {
@@ -63,7 +84,7 @@ signature_info="$(/usr/bin/codesign -dvv "$app" 2>&1)"
 }
 
 submission_zip="$output_dir/DevWorkspace-for-notarization.zip"
-/usr/bin/ditto -c -k --keepParent "$app" "$submission_zip"
+/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app" "$submission_zip"
 xcrun notarytool submit "$submission_zip" --keychain-profile "$notary_profile" --wait --timeout 30m
 xcrun stapler staple "$app"
 xcrun stapler validate "$app"
@@ -71,6 +92,6 @@ xcrun stapler validate "$app"
 
 # Zip again after stapling; the submitted zip predates the attached ticket.
 release_zip="$output_dir/DevWorkspace-notarized.zip"
-/usr/bin/ditto -c -k --keepParent "$app" "$release_zip"
+/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app" "$release_zip"
 /usr/bin/shasum -a 256 "$release_zip"
 printf 'Release artifact: %s\n' "$release_zip"

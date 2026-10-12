@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>SUFeedURL</key>
+    <string>$(DEVWORKSPACE_UPDATE_FEED_URL)</string>
+    <key>SUPublicEDKey</key>
+    <string>$(DEVWORKSPACE_UPDATE_PUBLIC_KEY)</string>
+    <key>SUEnableAutomaticChecks</key>
+    <false/>
+    <key>SUEnableSystemProfiling</key>
+    <false/>
+</dict>
+</plist>

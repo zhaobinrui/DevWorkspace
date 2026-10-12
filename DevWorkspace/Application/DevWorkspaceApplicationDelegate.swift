@@ -6,6 +6,7 @@ final class DevWorkspaceApplicationDelegate: NSObject, NSApplicationDelegate {
     let appearanceSettings = AppearanceSettings()
     let notificationSettings = NotificationSettings()
     let notificationManager = SystemUserNotificationManager()
+    let updateController = WorkspaceUpdateController()
     lazy var shortcutSettings = AppShortcutSettings(
         registrar: CarbonGlobalShortcutRegistrar()
     ) { [weak self] in
@@ -24,6 +25,8 @@ final class DevWorkspaceApplicationDelegate: NSObject, NSApplicationDelegate {
         )
         let refreshController = WorkspaceRefreshController(store: store)
 
+        updateController.start()
+
         menuBarController = MenuBarController(
             store: store,
             languageSettings: languageSettings,
@@ -31,6 +34,7 @@ final class DevWorkspaceApplicationDelegate: NSObject, NSApplicationDelegate {
             shortcutSettings: shortcutSettings,
             notificationSettings: notificationSettings,
             notificationManager: notificationManager,
+            updateController: updateController,
             refreshController: refreshController
         )
         notificationCoordinator = WorkspaceNotificationCoordinator(

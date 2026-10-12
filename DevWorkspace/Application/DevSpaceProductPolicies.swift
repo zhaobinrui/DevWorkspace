@@ -4,10 +4,6 @@ enum DevSpaceUpdatePolicy {
     static func summary(in language: AppLanguage) -> String {
         language.localized("policy.update.summary")
     }
-
-    static func previewStatus(in language: AppLanguage) -> String {
-        language.localized("policy.update.preview-status")
-    }
 }
 
 enum DevSpaceLicensePolicy {
